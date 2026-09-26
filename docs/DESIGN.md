@@ -43,6 +43,10 @@ It replaces the dependency on the external `session-context-init` and `session-h
    the skill is loaded into the same window it is trying to protect.
 9. **Portable tooling.** Python standard library only. Skill instructions do not rely on `grep`,
    `sed`, or other POSIX-only commands.
+10. **No runtime hooks.** The harness works through AGENTS.md and skill files only. It does not
+    rely on a pre-compaction hook or on the internal compaction settings: the user tried a
+    pre-compaction hook in the internal build and it did not work, and the configuration there
+    is complex. Write-ahead (principle 2) makes the moment of compaction irrelevant.
 
 ## Skills
 
@@ -111,7 +115,7 @@ the writes by loss risk:
 
 ## Open questions
 
-- Names of the continuation and compaction hooks in the internal oh-my-openagent build, and
-  where the 70% threshold is configured. Not blocking; the design does not depend on them.
+- Names of the continuation and compaction hooks in the internal oh-my-openagent build. Not
+  needed: see principle 10.
 - Whether the executing agent ticks checkboxes in the plan file. Observable in use; if it does,
   WORKING.md can rely on the plan for progress and keep only the current leaf.
