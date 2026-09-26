@@ -116,7 +116,7 @@ def collect(root: Path, globs):
 
 def read_text(path: Path):
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
+        return path.read_text(encoding="utf-8-sig", errors="replace")  # tolerate a Windows BOM
     except OSError:
         return None
 
@@ -303,7 +303,7 @@ def read_state(root: Path):
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
         return {"error": f"unreadable: {exc}"}
 
