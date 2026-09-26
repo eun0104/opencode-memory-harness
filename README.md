@@ -71,6 +71,10 @@ never pushes, rebases, resets, stashes, or amends.
 
 ## Workflow
 
+The step-by-step guide with scenarios, example outputs, and troubleshooting is
+**[docs/USAGE.md](docs/USAGE.md)**. In short:
+
+
 1. Plan with the oh-my-openagent planner until the plan file exists.
 2. In the same session run `session-start`. It writes the AGENTS.md section with the plan path,
    copies the tool, records the planning rationale as ADRs, and proposes a setup commit. Then it
@@ -106,8 +110,10 @@ New-Item -ItemType Directory -Force "$HOME\.config\opencode\commands" | Out-Null
 Copy-Item skills\context-curation\command\tune-docs.md "$HOME\.config\opencode\commands\"
 ```
 
-Restart opencode afterwards so the skills are discovered. `session-start` copies
-`tools/harness.py` into each project on its first run.
+opencode finds skills in `.opencode/skills/<name>/SKILL.md` (per project) or
+`~/.config/opencode/skills/<name>/SKILL.md` (global); if they do not appear, restart opencode.
+`session-start` copies `tools/harness.py` into each project on its first run. See
+[docs/USAGE.md](docs/USAGE.md#2-install-and-check) for checking the install and for updates.
 
 Requirements: Python 3.8+, Git, and pytest in the project. The harness tooling itself uses only
 the Python standard library and makes no network requests.
@@ -120,6 +126,7 @@ skills/
 ├── session-checkpoint/   SKILL.md
 ├── session-end/          SKILL.md
 └── context-curation/     SKILL.md, scripts/docs_inventory.py, references/, templates/, command/
+docs/USAGE.md             usage guide with scenarios (also USAGE.ko.md)
 docs/DESIGN.md            design contract and the reasons behind it
 tests/                    standard-library regression tests
 ```

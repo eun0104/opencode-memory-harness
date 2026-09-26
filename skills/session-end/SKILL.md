@@ -33,8 +33,9 @@ with `--allow-empty`.
 ## 3. Gate tests
 
 Run `pytest tests/gates/test_<leaf>.py -q -rxX`. If slow tests would take long, say so and ask
-before running them. Report passed, xfailed, and failed counts. A FAILED or XPASS(strict)
-result is a problem to fix or to put in `Next:`, never to hide.
+before running them. Report passed, xfailed, and failed counts. `XPASS(strict)` means a gate is
+met but still marked: remove the marker in the final checkpoint. Any other FAILED result is a
+problem to fix or to put in `Next:`, never to hide.
 
 If the leaf changed model code, check `docs/theory.md`: every Implementation and Verification
 line names a function and a test that exist, and Model overview still describes the current
