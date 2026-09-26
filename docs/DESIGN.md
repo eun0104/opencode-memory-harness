@@ -102,16 +102,27 @@ every later session and every recovery reads it from there. The harness never ha
 
 ## First session after planning
 
-The window is already heavy and the planning rationale exists only in the conversation. Order
-the writes by loss risk:
+The window is already heavy and the planning rationale exists only in the conversation.
 
-1. Take the plan path from context (the plan was just written). Do not re-read the plan.
+Do not run opencode's `/init`. It fills AGENTS.md with facts that are cheap to rediscover from
+the code (commands, folder layout), which fails the promotion test, spends the L0 budget, and
+drifts as the code changes. Such facts reach AGENTS.md later only through context-curation,
+once sessions show the agent repeatedly needs them.
+
+Order of writes:
+
+1. Write the AGENTS.md anchor first: the memory rules and the plan path (taken from context; the
+   plan was just written, so do not re-read it). It is a few hundred tokens and becomes the
+   recovery anchor as soon as it exists. If AGENTS.md already exists (an existing project or
+   another tool created it), add the harness section between markers instead of overwriting.
+   Whether opencode picks up an AGENTS.md created mid-session, or only at the next session
+   start, is unverified; either way, writing it first is never worse.
 2. Write the planning rationale (chosen approach, rejected alternatives and why) that is not
    already in the plan file. The plan usually records *what*, not *why*. Destination: the
    plan's notepad `decisions.md` if one exists at this point, otherwise `docs/decisions.md`.
 3. Write WORKING.md with the first leaf goal and its gates, pointing to the plan item.
-4. Write the minimal AGENTS.md with the anchor rules and the plan path.
-5. Close all open todos and recommend starting implementation in a fresh session.
+4. Close all open todos and recommend starting implementation in a fresh session. If AGENTS.md
+   turns out to load only at session start, this step is required, not recommended.
 
 ## Open questions
 
@@ -119,3 +130,5 @@ the writes by loss risk:
   needed: see principle 10.
 - Whether the executing agent ticks checkboxes in the plan file. Observable in use; if it does,
   WORKING.md can rely on the plan for progress and keep only the current leaf.
+- Whether opencode re-reads AGENTS.md during a session. Test: mid-session, append a visible
+  rule (e.g. "end every reply with 'OK'") and see whether the next reply follows it.
