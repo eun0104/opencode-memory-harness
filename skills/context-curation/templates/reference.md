@@ -1,7 +1,7 @@
 # <Topic> Reference
 
-Settled values only. Anything still under discussion belongs in `docs/handoff/DECISIONS.md` or
-`docs/handoff/HANDOFF.md` — this file is for lookup, and its usefulness depends on being trusted
+Settled values only. Anything still under discussion belongs in an ADR with status
+`proposed` or in an open gate test — this file is for lookup, and its usefulness depends on being trusted
 without checking.
 
 <!-- verified: YYYY-MM-DD -->

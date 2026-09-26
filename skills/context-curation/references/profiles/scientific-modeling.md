@@ -1,8 +1,8 @@
 # Profile: Scientific Theory and Mechanism Modeling
 
 Applies when code implements, combines, fits, or tests scientific theories, mechanisms, governing
-equations, or derived models. Use it during pre-init as soon as the initial concept provides that
-evidence; do not wait for session logs. This is a prior, not a checklist.
+equations, or derived models. Use it as soon as the plan shows that evidence; do not wait for
+curation history. This is a prior, not a checklist.
 
 ## Contents
 
@@ -26,15 +26,14 @@ source or explicit project derivation
 ```
 
 Never fabricate a missing link. Mark it `[TBD: source]`, `[TBD: implementation]`, or
-`[TBD: verification]` and route it to `HANDOFF.md` as an open scientific question or to the
-proposal as a blocker. A citation alone is not verification, and a passing fit alone does not
+`[TBD: verification]` and make it a `blocked:` gate test or a proposal blocker. A citation alone is not verification, and a passing fit alone does not
 identify the correct mechanism.
 
 ## Minimum durable model ledger
 
 When the project has at least one non-trivial governing equation or mechanism, prefer one
 `docs/domain/theory-ledger.md` before creating several topic files. Give every equation or claim a
-stable project ID so the code, tests, decisions, and handoff can refer to the same object.
+stable project ID so the code, gate tests, and ADRs can refer to the same object.
 
 ```markdown
 ### EQ-<stable-id> — <equation or claim name>
@@ -60,12 +59,12 @@ Keep these meanings separate:
 
 | State or kind | Meaning | Durable destination |
 |---|---|---|
-| Hypothesis | Plausible but not established for this project | `HANDOFF.md` open question |
-| Adopted model | Deliberately selected for implementation | Theory ledger + `DECISIONS.md` |
-| Validated model | Passed named analytical, numerical, or empirical checks | Theory ledger with evidence |
+| Hypothesis | Plausible but not established for this project | An open gate that would test it; ADR `proposed` if a choice depends on it |
+| Adopted model | Deliberately selected for implementation | Theory ledger + ADR |
+| Validated model | Passed named analytical, numerical, or empirical checks | Theory ledger naming the passing gate tests |
 | Numerical approximation | Computational substitution for a scientific form | Theory ledger; never disguise as theory |
 | Fitted parameter | Empirical result tied to a dataset and free/fixed split | `docs/reference/parameters.md` after acceptance |
-| Rejected/superseded model | Tested or replaced with a reason | `DECISIONS.md`, with revisit condition |
+| Rejected/superseded model | Tested or replaced with a reason | ADR, with revisit condition |
 
 Repetition across sessions is evidence of persistence, not scientific truth. Do not promote a
 hypothesis to `adopted` or `validated` merely because it recurs.
@@ -83,27 +82,27 @@ Verify each link independently when changing or curating a scientific model:
 4. **Verification evidence:** prefer dimensional checks, limiting cases, conservation laws,
    analytic or published benchmarks, manufactured solutions, and controlled dataset comparisons.
    A unit test that only reproduces the current implementation is regression evidence, not model
-   validation.
+   validation. Write each real check as a gate test named after its equation ID (for example
+   `test_eq_mu_field_low_field_limit`), so the verification link is executable.
 5. **Claim scope:** ensure conclusions do not exceed the intersection of the component models'
    validity domains or the range of the validation data.
 
 When two links disagree, record the discrepancy and stop short of declaring the model verified.
 Do not silently rewrite the canonical equation to match the implementation or vice versa.
 
-## Project memory contract additions
+## Gates and trailers for model work
 
-During pre-init, propose only fields justified by the initial concept. For a model-centered
-project, adapt the handoff spec with these fields, replacing weaker generic fields rather than
-accumulating them:
+Propose only what the plan justifies. For a model-centered leaf:
 
-1. **Active model and IDs** — current equation/mechanism set and version
-2. **Changed assumptions or approximations** — changes made or proposed this session
-3. **Verification state** — last check performed, outcome, and remaining `[TBD]` links
-4. **Open scientific question** — hypothesis or validity issue distinct from a coding blocker
+1. **Gate tests per equation ID** — dimensional consistency, limiting cases, conservation, and
+   comparison with a named dataset within a stated tolerance. A tolerance change needs an ADR.
+2. **`Evidence:` trailers** for links that cannot be automated, such as source fidelity checked
+   against a paper, with the page or equation number.
+3. **`Learned: [candidate] EQ-<id> ...`** for a possible durable scientific fact, so curation can
+   find it by ID.
+4. **ADRs** for every adopted, rejected, or superseded model choice.
 
-Use `[candidate]` in `SESSION-LOG.md` for a possible durable scientific fact and include its stable
-ID when one exists. Use `[decision]` for an adopted, rejected, or superseded model choice. Keep raw
-runs and transient numerical results in the session log; promote only accepted results with
+Raw runs and transient numbers stay in commits and trailers. Promote only accepted results, with
 dataset, method, uncertainty or fit quality, and provenance.
 
 ## Recommended invariants

@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "context-curation" / "scripts"))
+sys.path.insert(0, str(ROOT / "skills" / "context-curation" / "scripts"))
 
 from docs_inventory import estimate_tokens  # noqa: E402
 
@@ -121,6 +121,35 @@ class TemplateTests(unittest.TestCase):
         for key in harness.TRAILER_KEYS:
             with self.subTest(trailer=key):
                 self.assertIn(f"`{key}:`", text)
+
+
+class CurationSkillTests(unittest.TestCase):
+    CURATION = SKILLS / "context-curation"
+    BUDGET = 3000  # runs in a fresh session every few leaves, so it may be larger
+
+    def test_curation_skill_budget_and_portability(self):
+        text = read(self.CURATION / "SKILL.md")
+        self.assertLessEqual(estimate_tokens(text), self.BUDGET)
+        self.assertIsNone(POSIX_ONLY.search(text))
+
+    def test_curation_references_exist(self):
+        text = read(self.CURATION / "SKILL.md")
+        for rel in re.findall(r"`((?:references|templates|scripts)/[\w./-]+\.(?:md|py|json))`", text):
+            with self.subTest(ref=rel):
+                self.assertTrue((self.CURATION / rel).is_file())
+
+    def test_no_v2_concepts_remain(self):
+        stale = re.compile(r"HANDOFF|SESSION-LOG|docs/handoff|handoff-spec|session-context-init|"
+                           r"session-handoff|harvested_through|pre-init")
+        for path in sorted(self.CURATION.rglob("*")):
+            if path.is_file() and path.suffix in {".md", ".py", ".json"}:
+                with self.subTest(file=str(path.relative_to(self.CURATION))):
+                    self.assertIsNone(stale.search(read(path)))
+
+    def test_curation_stops_with_todos_closed(self):
+        text = read(self.CURATION / "SKILL.md")
+        step5 = text[text.index("## Step 5"):text.index("## Step 6")]
+        self.assertIn("Mark every open todo completed or cancelled", step5)
 
 
 if __name__ == "__main__":

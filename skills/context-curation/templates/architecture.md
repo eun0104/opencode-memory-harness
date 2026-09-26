@@ -1,7 +1,7 @@
 # Architecture
 
 Describes what is true **now**. Rewrite freely as the system changes — history lives
-in `docs/handoff/DECISIONS.md`, not here.
+in `docs/adr/`, not here.
 
 <!-- verified: YYYY-MM-DD -->
 

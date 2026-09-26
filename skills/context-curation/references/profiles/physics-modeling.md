@@ -6,7 +6,7 @@ measured data, and combine mechanisms from different theoretical frameworks.
 Apply this together with `scientific-modeling.md`. Its traceability chain, evidence states, and
 verification protocol remain mandatory; this profile adds device-modeling and fitting details.
 
-A profile is a **prior, not a checklist**. Confirm each item against what the session logs
+A profile is a **prior, not a checklist**. Confirm each item against what the plan, commits, and ADRs
 actually show before creating anything.
 
 ## Contents
@@ -14,7 +14,7 @@ actually show before creating anything.
 1. What makes this project class distinctive
 2. Recommended L2 documents
 3. Recommended invariants
-4. Recommended HANDOFF.md fields
+4. Recommended gate tests
 5. What NOT to promote
 
 ## What makes this project class distinctive
@@ -96,7 +96,7 @@ Include **numerical** gotchas alongside tool ones. Distinguishing a convergence 
 physical result is a recurring judgement here, and getting it wrong in either direction wastes a
 session — chasing physics that is a solver artefact, or dismissing real physics as one.
 
-### `docs/handoff/DECISIONS.md`
+### ADRs in `docs/adr/`
 
 Physics choices are ADRs. `Revisit if` maps naturally onto data conditions:
 *"Revisit if we obtain low-temperature data below 100 K"* — the decision was made under a data
@@ -115,21 +115,26 @@ For `docs/rules/modeling-invariants.md`, with one-line summaries in AGENTS.md:
 Every invariant needs its "Instead" line: what to do when the rule blocks progress. A rule with
 no alternative path gets worked around rather than followed.
 
-## Recommended HANDOFF.md fields
+## Recommended gate tests
 
-Add to the standard set, replacing generic fields rather than accumulating on top:
+Write these per leaf, before the code, where the plan item supports them:
 
-1. **Active model variant** — which mechanism combination is currently in play, and its version
-2. **Parameter state** — current values with the free/fixed split
-3. **Last fit** — dataset, quality metric, and **what the residual structure suggests is missing**
-4. **Open physics question** — the modelling question currently blocking, distinct from the coding blocker
+1. **Units and dimensions** — every interface function returns the documented units; a cm/m or
+   eV/J slip fails a test instead of surviving as a plausible-looking curve.
+2. **Limiting cases** — e.g. field-dependent mobility tends to `mu0` as E → 0; temperature
+   dependence reduces to the known form in its regime.
+3. **Fit quality on a named dataset** — residual metric within a stated tolerance, with the
+   free/fixed parameter split asserted, not just the final values.
+4. **Physical bounds** — fitted parameters inside physically meaningful ranges.
 
-Field 3 matters most. Residual structure is the signal that drives the next hypothesis, it is
-obvious while looking at the plot, and it is completely gone by the next session.
+Residual structure is the signal that drives the next hypothesis, and it cannot be a test. Write
+what it suggests is missing in the checkpoint that records the fit, as
+`Evidence: <dataset> residual shows <pattern>` and, if it points to a new mechanism,
+`Learned: [candidate] ...`. It is obvious while looking at the plot and gone by the next session.
 
 ## What NOT to promote
 
-- Individual fit runs and their numbers → session log; only *accepted* values reach `reference/`
+- Individual fit runs and their numbers → commits and trailers; only *accepted* values reach `reference/`
 - Plot styling, file paths for one figure → not project knowledge
 - Anything derivable by running the code and looking → the code is its own documentation
-- A physical intuition not yet tested against data → `HANDOFF.md` as an open question, not a domain doc. Promoting an untested intuition into the persistent layer converts a hypothesis into an assumption without anyone deciding to.
+- A physical intuition not yet tested against data → an open gate that would test it, not a domain doc. Promoting an untested intuition into the persistent layer converts a hypothesis into an assumption without anyone deciding to.
