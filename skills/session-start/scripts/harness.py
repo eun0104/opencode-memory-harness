@@ -84,6 +84,20 @@ def commits(root: Path, rev_range: str, limit: int = 0):
     return result
 
 
+def porcelain_paths(raw: str):
+    """Paths from `git status --porcelain -z`: unquoted, with the new name for renames."""
+    paths, fields, i = [], raw.split("\0"), 0
+    while i < len(fields):
+        entry = fields[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        paths.append(entry[3:])
+        if entry[0] in "RC":  # rename/copy: the next field is the original path
+            i += 1
+    return paths
+
+
 def leaf_slug(branch):
     if not branch or not branch.startswith(FEATURE_PREFIX):
         return None
@@ -103,7 +117,7 @@ def is_blocked(gate) -> bool:
 
 
 def gate_file_for(slug: str) -> Path:
-    return GATES_DIR / ("test_" + re.sub(r"[^0-9A-Za-z_]", "_", slug) + ".py")
+    return GATES_DIR / ("test_" + re.sub(r"\W", "_", slug) + ".py")
 
 
 # --------------------------------------------------------------------------
@@ -189,7 +203,7 @@ def scan_gates(root: Path):
         for path in sorted(base.rglob("*.py")):
             rel = path.relative_to(root).as_posix()
             try:
-                tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+                tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=rel)
             except (SyntaxError, UnicodeDecodeError, OSError) as exc:
                 errors.append(f"{rel}: cannot parse ({exc.__class__.__name__})")
                 continue
@@ -220,7 +234,8 @@ def build_status(root: Path, base: str) -> dict:
     status = {"git": True, "repo": False, "branch": None, "base": base, "leaf": None,
               "gate_file": None, "gate_file_exists": False, "next": None, "tried": [],
               "evidence": [], "branch_commits": 0, "leaf_gates": [], "other_gates": [],
-              "uncommitted": [], "hidden_cache_paths": 0, "warnings": [], "notes": []}
+              "uncommitted": [], "hidden_cache_paths": 0, "warnings": [], "notes": [],
+              "detached": None, "base_exists": None}
     if git(root, "--version") is None:
         status["git"] = False
         status["notes"].append("git is not available")
@@ -228,10 +243,18 @@ def build_status(root: Path, base: str) -> dict:
         status["notes"].append("not a Git work tree")
     else:
         status["repo"] = True
-        branch = (git(root, "rev-parse", "--abbrev-ref", "HEAD") or "").strip()
+        branch = (git(root, "symbolic-ref", "--quiet", "--short", "HEAD") or "").strip()
+        head = (git(root, "rev-parse", "--short", "HEAD") or "").strip()
+        if not branch:
+            status["detached"] = head or None
+            status["notes"].append(f"detached HEAD at {head}: no active leaf; switch to a "
+                                   "branch before working" if head else "HEAD is unreadable")
+        elif not head:
+            status["notes"].append(f"no commits yet on '{branch}'")
         status["branch"] = branch or None
         slug = leaf_slug(branch)
         base_exists = git(root, "rev-parse", "--verify", "--quiet", base) is not None
+        status["base_exists"] = base_exists
         if slug:
             status["leaf"] = slug
             rev_range = f"{base}..HEAD" if base_exists else "HEAD"
@@ -250,10 +273,9 @@ def build_status(root: Path, base: str) -> dict:
                         status["evidence"].append(value)
             if status["next"] is None:
                 status["notes"].append("no checkpoint with a Next: trailer on this branch yet")
-        elif branch:
+        elif branch and head:
             status["notes"].append(f"on '{branch}', not a feature/* branch: no active leaf")
-        porcelain = git(root, "status", "--porcelain") or ""
-        paths = [line[3:] for line in porcelain.splitlines() if line.strip()]
+        paths = porcelain_paths(git(root, "status", "--porcelain", "-z") or "")
         status["uncommitted"] = [p for p in paths if not is_cache_path(p)]
         status["hidden_cache_paths"] = len(paths) - len(status["uncommitted"])
 
@@ -283,8 +305,15 @@ def render_status(s: dict) -> str:
     if not s["repo"]:
         out.append("Repository: " + "; ".join(s["notes"]))
     else:
-        out.append(f"Branch: {s['branch']}" + (f"  (leaf: {s['leaf']}, "
-                   f"{s['branch_commits']} commit(s) since {s['base']})" if s["leaf"] else ""))
+        if s["detached"]:
+            out.append(f"Branch: (detached HEAD at {s['detached']})")
+        elif s["leaf"]:
+            since = (f"since {s['base']}" if s["base_exists"]
+                     else f"in total; base '{s['base']}' not found")
+            out.append(f"Branch: {s['branch']}  (leaf: {s['leaf']}, "
+                       f"{s['branch_commits']} commit(s) {since})")
+        else:
+            out.append(f"Branch: {s['branch'] or '(none)'}")
         if s["next"]:
             out.append(f"Next: {s['next']['text']}")
             out.append(f"  from {s['next']['sha']} \"{s['next']['subject']}\"")

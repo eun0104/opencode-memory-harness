@@ -64,7 +64,7 @@ AGENTS.md is already in context. Read as little else as possible.
    a. Run `git branch --list "feature/*"`. If an unmerged leaf branch exists, ask whether to
       resume it instead.
    b. Read the plan, pick the next unfinished item, and run `git switch -c feature/<leaf>`
-      with a short kebab-case slug.
+      with a short ASCII kebab-case slug.
    c. Write `tests/gates/test_<leaf>.py` (dashes become underscores) from
       `templates/gate_test.py`: one test per acceptance criterion of that plan item, each
       assertion measurable. For a criterion that cannot be a test, name it in the first
