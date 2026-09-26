@@ -1,286 +1,394 @@
-import importlib.util
-import json
+"""Regression tests for skills/context-curation/scripts/docs_inventory.py (v3.1 layout).
+
+Standard library only. Projects are synthesized in temporary directories.
+"""
+
+import argparse
+import io
 import os
-import shutil
 import subprocess
+import sys
 import tempfile
 import time
-import types
 import unittest
-from datetime import date, timedelta
+from contextlib import redirect_stdout
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "skills" / "context-curation" / "scripts"))
 
-SCRIPT = (Path(__file__).resolve().parents[1]
-          / "context-curation" / "scripts" / "docs_inventory.py")
-SPEC = importlib.util.spec_from_file_location("docs_inventory", SCRIPT)
-inventory = importlib.util.module_from_spec(SPEC)
-assert SPEC.loader is not None
-SPEC.loader.exec_module(inventory)
+import docs_inventory as inv  # noqa: E402
+
+SECTION_TEMPLATE = ROOT / "skills" / "session-start" / "templates" / "agents-section.md"
+ADR_TEMPLATE = ROOT / "skills" / "session-start" / "templates" / "adr-0001.md"
+GIT_ENV = {"GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+           "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "t@example.invalid",
+           "GIT_CONFIG_NOSYSTEM": "1"}
+PLAN = ".omo/plans/demo.md"
 
 
 def args(**overrides):
-    values = {
-        "l0_budget": 2000,
-        "l1_budget": 1500,
-        "stale_days": 90,
-        "dup_threshold": 0.45,
-        "context_window": 200000,
-        "bootstrap_sessions": 5,
-        "pre_init": None,
-    }
-    values.update(overrides)
-    return types.SimpleNamespace(**values)
+    base = dict(l0_budget=2000, stale_days=90, dup_threshold=0.45, base="main")
+    base.update(overrides)
+    return argparse.Namespace(**base)
 
 
-def write(root: Path, rel: str, text: str) -> Path:
-    path = root / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    return path
+class Project:
+    def __init__(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def write(self, rel, text):
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def harness(self, plan=PLAN, extra=""):
+        section = SECTION_TEMPLATE.read_text(encoding="utf-8").replace("<plan-path>", plan)
+        self.write("AGENTS.md", "# Demo\n\n" + section + extra)
+        self.write(plan, "# Plan\n- [ ] leaf one\n")
+        self.write("tools/harness.py", "# stub\n")
+        self.write("docs/adr/0001-record-decisions-as-adrs.md",
+                   ADR_TEMPLATE.read_text(encoding="utf-8"))
+
+    def git(self, *argv, env=None):
+        full_env = dict(os.environ, **GIT_ENV, **(env or {}))
+        return subprocess.run(["git", *argv], cwd=str(self.root), check=True,
+                              capture_output=True, text=True, env=full_env).stdout
+
+    def commit(self, message, *paths, env=None):
+        self.git("add", "--", *(paths or ["."]), env=env)
+        self.git("commit", "-q", "-m", message, env=env)
+
+    def audit(self, **overrides):
+        return inv.audit(self.root, args(**overrides))
+
+    def close(self):
+        self._tmp.cleanup()
 
 
-class InventoryTests(unittest.TestCase):
-    def test_canonical_session_path_casing_matches_runtime_skills(self):
-        spec = (SCRIPT.parents[1] / "templates" / "handoff-spec.md")
-        spec_text = spec.read_text(encoding="utf-8")
+class ModeTests(unittest.TestCase):
+    def setUp(self):
+        self.p = Project()
 
-        self.assertEqual(("plan.md", "docs/handoff/HANDOFF.md"),
-                         inventory.REQUIRED_L1_PATHS)
-        self.assertIn("docs/handoff/SESSION-LOG.md", inventory.SESSION_GLOBS)
-        self.assertNotIn("docs/handoff/session-log.md", inventory.SESSION_GLOBS)
-        self.assertIn("`plan.md`", spec_text)
-        self.assertIn("`docs/handoff/HANDOFF.md`", spec_text)
-        self.assertIn("`docs/handoff/SESSION-LOG.md`", spec_text)
-        self.assertIn("`docs/handoff/DECISIONS.md`", spec_text)
+    def tearDown(self):
+        self.p.close()
 
-    def test_noncanonical_casing_is_not_accepted_as_the_runtime_contract(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md", "[plan](PLAN.md)\n")
-            write(root, "PLAN.md", "# Wrong-case plan\n")
-            write(root, "docs/handoff/handoff.md", "# Wrong-case handoff\n")
-            write(root, "docs/handoff/session-log.md", "## Session 001\n")
+    def test_no_agents_md_is_not_set_up(self):
+        self.assertEqual(self.p.audit()["mode"], "not-set-up")
 
-            result = inventory.audit(root, args())
-            layers = {record["path"]: record["layer"] for record in result["docs"]}
-            missing = {item["path"] for item in result["budget"] if item.get("missing")}
+    def test_agents_md_without_marker_is_not_set_up(self):
+        self.p.write("AGENTS.md", "# Something from /init\n")
+        self.assertEqual(self.p.audit()["mode"], "not-set-up")
 
-            self.assertEqual("ambiguous", result["mode"])
-            self.assertIn("plan.md is missing", result["mode_reason"])
-            self.assertEqual("L2", layers["PLAN.md"])
-            self.assertEqual({"plan.md", "docs/handoff/HANDOFF.md"}, missing)
-            self.assertEqual(0, result["sessions"]["files"])
+    def test_complete_harness_is_ready(self):
+        self.p.harness()
+        result = self.p.audit()
+        self.assertEqual(result["mode"], "ready")
+        self.assertEqual(result["setup"]["plan_path"], PLAN)
+        self.assertEqual(result["broken_links"], [])
+        self.assertEqual(result["orphans"], [])
 
-    def test_only_contract_paths_are_l1_and_all_docs_need_reachability(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md", "[plan](plan.md)\n")
-            write(root, "plan.md", "# Plan\n")
-            write(root, "docs/handoff/HANDOFF.md", "# Handoff\n")
-            write(root, "README.md", "# How to run\n")
-            write(root, "docs/subsystem/README.md", "# Subsystem\n")
+    def test_missing_plan_or_tool_is_incomplete(self):
+        self.p.harness()
+        (self.p.root / "tools" / "harness.py").unlink()
+        self.assertEqual(self.p.audit()["mode"], "incomplete")
+        self.p.write("tools/harness.py", "")
+        (self.p.root / PLAN).unlink()
+        result = self.p.audit()
+        self.assertEqual(result["mode"], "incomplete")
+        self.assertIn("not found", inv.report(result, args()))
 
-            result = inventory.audit(root, args())
-            layers = {record["path"]: record["layer"] for record in result["docs"]}
+    def test_cli_exit_codes(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(inv.main(["--root", str(self.p.root)]), 2)
+        self.p.harness()
+        with redirect_stdout(buf):
+            self.assertEqual(inv.main(["--root", str(self.p.root)]), 0)
 
-            self.assertEqual("L0", layers["AGENTS.md"])
-            self.assertEqual("L1", layers["plan.md"])
-            self.assertEqual("L1", layers["docs/handoff/HANDOFF.md"])
-            self.assertEqual("L2", layers["README.md"])
-            self.assertEqual("L2", layers["docs/subsystem/README.md"])
-            self.assertIn("docs/handoff/HANDOFF.md", result["orphans"])
-            self.assertIn("README.md", result["orphans"])
 
-    def test_missing_required_l1_docs_are_reported(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md", "# Agent instructions\n")
+class LayerAndBudgetTests(unittest.TestCase):
+    def setUp(self):
+        self.p = Project()
+        self.p.harness()
 
-            result = inventory.audit(root, args())
-            missing = {item["path"] for item in result["budget"]
-                       if item.get("missing")}
+    def tearDown(self):
+        self.p.close()
 
-            self.assertEqual({"plan.md", "docs/handoff/HANDOFF.md"},
-                             missing - {"AGENTS.md"})
+    def test_layers(self):
+        layers = {d["path"]: d["layer"] for d in self.p.audit()["docs"]}
+        self.assertEqual(layers["AGENTS.md"], "L0")
+        self.assertEqual(layers["docs/adr/0001-record-decisions-as-adrs.md"], "L2")
+        self.assertNotIn(PLAN, layers)  # .omo/ is planner-owned and excluded from the doc audit
 
-    def test_verification_marker_resets_but_does_not_disable_staleness(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md",
-                  "[plan](plan.md) [handoff](docs/handoff/HANDOFF.md) "
-                  "[old](docs/old.md) [fresh](docs/fresh.md)\n")
-            write(root, "plan.md", "# Plan\n")
-            write(root, "docs/handoff/HANDOFF.md", "# Handoff\n")
-            old_date = (date.today() - timedelta(days=180)).isoformat()
-            old_doc = write(root, "docs/old.md", f"<!-- verified: {old_date} -->\n")
-            fresh_doc = write(root, "docs/fresh.md",
-                              f"<!-- verified: {date.today().isoformat()} -->\n")
-            old_epoch = (date.today() - timedelta(days=200)).strftime("%Y-%m-%d")
-            old_value = time.mktime(time.strptime(old_epoch, "%Y-%m-%d"))
-            os.utime(old_doc, (old_value, old_value))
-            os.utime(fresh_doc, (old_value, old_value))
+    def test_plan_is_measured_but_not_budgeted(self):
+        result = self.p.audit()
+        self.assertGreater(result["plan_tokens"], 0)
+        self.assertEqual(result["budget"]["over"], 0)
 
-            result = inventory.audit(root, args())
-            stale = {item["path"] for item in result["stale"]}
+    def test_over_budget(self):
+        result = self.p.audit(l0_budget=100)
+        self.assertGreater(result["budget"]["over"], 0)
+        self.assertIn("OVER by", inv.report(result, args(l0_budget=100)))
 
-            self.assertIn("docs/old.md", stale)
-            self.assertNotIn("docs/fresh.md", stale)
+    def test_template_section_fits_well_inside_budget(self):
+        self.assertLess(self.p.audit()["budget"]["tokens"], 800)
 
-    def test_bootstrap_uses_latest_five_actual_session_entries(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md", "[plan](plan.md) [handoff](docs/handoff/HANDOFF.md)\n")
-            write(root, "plan.md", "# Plan\n")
-            write(root, "docs/handoff/HANDOFF.md", "# Handoff\n")
-            headings = "\n".join(f"## Session {number}" for number in (1, 3, 7, 9, 10, 12))
-            write(root, "docs/handoff/SESSION-LOG.md", headings)
 
-            result = inventory.audit(root, args())
-            output = inventory.report(result, args())
+class ReachabilityTests(unittest.TestCase):
+    def setUp(self):
+        self.p = Project()
+        self.p.harness(extra="\n| `docs/domain/gotchas.md` | When a tool fails oddly |\n"
+                             "| `docs/rules/` | Before touching measured data |\n")
+        self.p.write("docs/domain/gotchas.md", "# Gotchas\n")
+        self.p.write("docs/rules/measurement-invariants.md", "# Rules\n")
 
-            self.assertIn("latest 5 session entries (3, 7, 9, 10, 12)", output)
+    def tearDown(self):
+        self.p.close()
 
-    def test_link_extraction_ignores_examples_globs_and_placeholders(self):
-        text = """
-`docs/real.md`
-`docs/sessions/007-*.md`
-`docs/domain/<topic>.md`
+    def test_directory_pointer_reaches_its_files(self):
+        result = self.p.audit()
+        self.assertEqual(result["orphans"], [])
 
-```markdown
-[example](docs/not-real.md)
-`docs/also-not-real.md`
-```
+    def test_orphan_and_broken_pointer(self):
+        self.p.write("docs/domain/lonely.md", "# Nobody points here\n")
+        self.p.write("docs/domain/gotchas.md", "See `docs/reference/missing.md`.\n")
+        result = self.p.audit()
+        self.assertEqual(result["orphans"], ["docs/domain/lonely.md"])
+        self.assertEqual(result["broken_links"],
+                         [{"from": "docs/domain/gotchas.md", "link": "docs/reference/missing.md"}])
+
+    def test_missing_docs_directory_pointer_is_broken(self):
+        self.p.write("AGENTS.md", (self.p.root / "AGENTS.md").read_text(encoding="utf-8")
+                     + "| `docs/reference/` | When you need a settled value |\n")
+        links = [b["link"] for b in self.p.audit()["broken_links"]]
+        self.assertIn("docs/reference/", links)
+
+    def test_fenced_examples_are_not_pointers(self):
+        self.p.write("docs/domain/gotchas.md", "```\nsee `docs/nowhere.md`\n```\n")
+        self.assertEqual(self.p.audit()["broken_links"], [])
+
+
+class AdrAndStalenessTests(unittest.TestCase):
+    def setUp(self):
+        self.p = Project()
+        self.p.harness()
+
+    def tearDown(self):
+        self.p.close()
+
+    def test_adr_problems(self):
+        self.p.write("docs/adr/0002-model.md", "# 0002\n- Status: proposed\n")
+        self.p.write("docs/adr/0002-other.md", "# dup\n- Status: accepted\n- Source: x\n")
+        self.p.write("docs/adr/notes.md", "# bad name\n")
+        adrs = self.p.audit()["adrs"]
+        text = "\n".join(adrs["problems"])
+        self.assertIn("0002-model.md: no '- Source:' line", text)
+        self.assertIn("ADR number 0002 used by", text)
+        self.assertIn("notes.md: name is not NNNN-<slug>.md", text)
+        self.assertEqual(adrs["by_status"]["proposed"], 1)
+
+    def test_old_adr_is_not_stale_but_old_doc_is(self):
+        old = time.time() - 200 * 86400
+        adr = self.p.root / "docs/adr/0001-record-decisions-as-adrs.md"
+        doc = self.p.write("docs/architecture.md", "# Arch\n")
+        self.p.write("AGENTS.md", (self.p.root / "AGENTS.md").read_text(encoding="utf-8")
+                     + "| `docs/architecture.md` | Before changing module boundaries |\n")
+        os.utime(adr, (old, old))
+        os.utime(doc, (old, old))
+        stale = [s["path"] for s in self.p.audit()["stale"]]
+        self.assertEqual(stale, ["docs/architecture.md"])
+
+    def test_verified_marker_resets_staleness(self):
+        old = time.time() - 200 * 86400
+        doc = self.p.write("docs/architecture.md",
+                           f"# Arch\n<!-- verified: {time.strftime('%Y-%m-%d')} -->\n")
+        os.utime(doc, (old, old))
+        self.assertEqual(self.p.audit()["stale"], [])
+
+
+class GitHarvestTests(unittest.TestCase):
+    def setUp(self):
+        self.p = Project()
+        self.p.git("init", "-q", "-b", "main")
+        self.p.harness()
+        self.p.commit("setup")
+        self.setup_sha = self.p.git("rev-parse", "HEAD").strip()
+
+    def tearDown(self):
+        self.p.close()
+
+    def leaf(self, name, trailers):
+        self.p.git("switch", "-q", "-c", f"feature/{name}")
+        self.p.write(f"src/{name}.py", "x = 1\n")
+        self.p.commit("checkpoint: work\n\n" + "\n".join(trailers), f"src/{name}.py")
+        self.p.git("switch", "-q", "main")
+        self.p.git("merge", "-q", "--no-ff", "-m", f"Merge feature/{name}", f"feature/{name}")
+
+    def test_counts_merges_and_tagged_trailers(self):
+        self.leaf("one", ["Next: a", "Learned: [gotcha] csv has units row",
+                          "Learned: [candidate] mu0 fixed at 300 K"])
+        self.leaf("two", ["Next: b", "Tried: power law — diverges"])
+        h = self.p.audit()["harvest"]
+        self.assertEqual(h["merges"], 2)
+        self.assertEqual(h["trailers"]["Learned"], 2)
+        self.assertEqual(h["learned_tags"], {"gotcha": 1, "candidate": 1})
+
+    def test_counts_only_since_last_curated_commit(self):
+        self.leaf("one", ["Next: a", "Learned: [gotcha] old"])
+        curated = self.p.git("rev-parse", "HEAD").strip()
+        self.p.write("docs/.curation-state.json",
+                     '{"last_curated": "2026-09-01", "last_curated_commit": "%s"}' % curated)
+        self.p.commit("curation state", "docs/.curation-state.json")
+        self.leaf("two", ["Next: b", "Learned: [candidate] new"])
+        h = self.p.audit()["harvest"]
+        self.assertTrue(h["since_valid"])
+        self.assertEqual(h["merges"], 1)
+        self.assertEqual(h["learned_tags"], {"candidate": 1})
+
+    def test_unknown_since_falls_back_with_warning(self):
+        self.p.write("docs/.curation-state.json", '{"last_curated_commit": "deadbeef"}')
+        result = self.p.audit()
+        self.assertFalse(result["harvest"]["since_valid"])
+        self.assertIn("not found", inv.report(result, args()))
+
+    def test_ignored_plan_is_reported(self):
+        self.p.git("rm", "-q", "--cached", PLAN)
+        self.p.write(".gitignore", ".omo/\n")
+        result = self.p.audit()
+        self.assertTrue(result["setup"]["plan_ignored"])
+        self.assertIn("git-ignored", inv.report(result, args()))
+
+    def test_tracked_plan_is_versioned_even_if_folder_is_ignored(self):
+        self.p.write(".gitignore", ".omo/\n")
+        self.assertFalse(self.p.audit()["setup"]["plan_ignored"])
+
+    def test_gate_file_open_too_long(self):
+        self.p.write("tests/gates/test_old.py",
+                     "import pytest\n@pytest.mark.xfail(strict=True, reason='gate: x')\n"
+                     "def test_x():\n    assert False\n")
+        self.p.write("tests/gates/test_done.py", "def test_y():\n    assert True\n")
+        old = "2025-01-01T12:00:00"
+        self.p.commit("old gates", "tests/gates/test_old.py", "tests/gates/test_done.py",
+                      env={"GIT_AUTHOR_DATE": old, "GIT_COMMITTER_DATE": old})
+        stale = self.p.audit()["stale_gates"]
+        self.assertEqual([g["path"] for g in stale], ["tests/gates/test_old.py"])
+
+
+GOOD_THEORY = """# Theory — demo
+
+## Model overview
+
+Field-dependent mobility with velocity saturation.
+
+## Equations
+
+### EQ-mu-field — field-dependent mobility
+
+$$ \\mu(E) = \\mu_0 / (1 + E/E_c) $$
+
+- Symbols and units: mu [cm2/Vs], E [kV/cm]
+- Assumptions: steady state, uniform field
+- Valid for: 300 K, E < 50 kV/cm
+- Source: [R1] eq. (3), p. 2193
+- Implementation: `src/mobility.py::mu`
+- Verification: `tests/gates/test_fit.py::test_low_field_limit`
+- Status: validated
+
+## References
+
+- [R1] A. Author and B. Author, "An example mobility model," J. Example 1, 2190 (2000).
+  DOI: 10.5555/example.0001 — checked: user 2026-09-26
 """
-        self.assertEqual({"docs/real.md"}, inventory.extract_links(text))
 
-    def test_broken_targets_in_unreachable_docs_do_not_create_noise(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md", "[plan](plan.md) [handoff](docs/handoff/HANDOFF.md)\n")
-            write(root, "plan.md", "# Plan\n")
-            write(root, "docs/handoff/HANDOFF.md", "# Handoff\n")
-            write(root, "docs/orphan.md", "[missing](missing.md)\n")
 
-            result = inventory.audit(root, args())
+class TheoryTests(unittest.TestCase):
+    def setUp(self):
+        self.p = Project()
+        self.p.harness()
+        self.p.write("src/mobility.py", "def mu(E, mu0, Ec):\n    return mu0 / (1 + E / Ec)\n")
+        self.p.write("tests/gates/test_fit.py", "def test_low_field_limit():\n    pass\n")
 
-            self.assertIn("docs/orphan.md", result["orphans"])
-            self.assertEqual([], result["broken_links"])
+    def tearDown(self):
+        self.p.close()
 
-    def test_broken_target_in_reachable_doc_is_reported(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md",
-                  "[plan](plan.md) [handoff](docs/handoff/HANDOFF.md) [rules](docs/rules.md)\n")
-            write(root, "plan.md", "# Plan\n")
-            write(root, "docs/handoff/HANDOFF.md", "# Handoff\n")
-            write(root, "docs/rules.md", "[missing](missing.md)\n")
+    def theory(self, text):
+        self.p.write("docs/theory.md", text)
+        return self.p.audit()["theory"]
 
-            result = inventory.audit(root, args())
+    def test_absent_theory_is_not_a_problem(self):
+        self.assertFalse(self.p.audit()["theory"]["exists"])
 
-            self.assertEqual([{"from": "docs/rules.md", "link": "missing.md"}],
-                             result["broken_links"])
+    def test_complete_theory_has_no_problems(self):
+        t = self.theory(GOOD_THEORY)
+        self.assertEqual((t["equations"], t["references"]), (1, 1))
+        self.assertEqual(t["problems"], [])
+        self.assertEqual(t["tbd"], [])
 
-    @unittest.skipUnless(shutil.which("git"), "git is required for commit metadata test")
-    def test_git_last_commit_uses_repo_relative_pathspec(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            tracked = write(root, "docs/tracked.md", "# Tracked\n")
-            commands = [
-                ["git", "init", "-q"],
-                ["git", "config", "user.email", "fixture@example.invalid"],
-                ["git", "config", "user.name", "Fixture"],
-                ["git", "add", "docs/tracked.md"],
-            ]
-            for command in commands:
-                subprocess.run(command, cwd=root, check=True, capture_output=True)
-            commit_env = os.environ.copy()
-            commit_env["GIT_AUTHOR_DATE"] = "2020-01-02T12:00:00Z"
-            commit_env["GIT_COMMITTER_DATE"] = "2020-01-02T12:00:00Z"
-            subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=root,
-                           check=True, capture_output=True, env=commit_env)
+    def test_identifier_without_checked_is_flagged(self):
+        t = self.theory(GOOD_THEORY.replace(" — checked: user 2026-09-26", ""))
+        self.assertIn("[R1]: identifier without 'checked: pdf | user | online'", t["problems"])
 
-            commit_date, sha = inventory.git_last_commit(root, tracked)
-            fresh_age, _ = inventory.freshness(
-                tracked.read_text(encoding="utf-8"), tracked.stat().st_mtime, commit_date)
+    def test_malformed_doi_and_missing_identifier(self):
+        text = GOOD_THEORY.replace("10.5555/example.0001", "10.11/x") + (
+            "- [R2] Someone, \"A paper,\" J. Somewhere 1, 1 (2020).\n")
+        t = self.theory(text)
+        joined = "\n".join(t["problems"])
+        self.assertIn("[R1]: malformed DOI `10.11/x`", joined)
+        self.assertIn("[R2]: no DOI, arXiv, ISBN, or Internal identifier", joined)
+        self.assertEqual(t["unused_references"], ["R2"])
 
-            self.assertEqual("2020-01-02", commit_date)
-            self.assertRegex(sha or "", r"^[0-9a-f]{7,}$")
-            self.assertGreater(fresh_age, 90)
+    def test_tbd_is_open_not_a_problem(self):
+        text = GOOD_THEORY.replace("- Source: [R1] eq. (3), p. 2193",
+                                   "- Source: adapted from a textbook,\n  [TBD: source]")
+        t = self.theory(text)
+        self.assertIn("EQ-mu-field: source", t["tbd"])
+        self.assertEqual(t["problems"], [])
 
-            tracked.write_text("# Tracked\n\nUpdated now.\n", encoding="utf-8")
-            self.assertTrue(inventory.git_worktree_changed(root, tracked))
-            dirty_age, _ = inventory.freshness(
-                tracked.read_text(encoding="utf-8"), tracked.stat().st_mtime, None)
-            self.assertLessEqual(dirty_age, 1)
+    def test_uncited_source_and_undefined_reference(self):
+        text = GOOD_THEORY.replace("[R1] eq. (3), p. 2193", "Smith's classic paper")
+        t = self.theory(text.replace("- Verification:", "- Note: [R9]\n- Verification:"))
+        joined = "\n".join(t["problems"])
+        self.assertIn("EQ-mu-field: source cites no [Rn] reference", joined)
 
-    def test_state_template_is_valid_and_starts_without_fake_rejections(self):
-        template = (SCRIPT.parents[1] / "templates" / "curation-state.json")
-        state = json.loads(template.read_text(encoding="utf-8"))
-        self.assertEqual(1, state["schema_version"])
-        self.assertIsNone(state["last_tuned"])
-        self.assertEqual([], state["rejected_candidates"])
+    def test_cited_but_not_listed(self):
+        t = self.theory(GOOD_THEORY.replace("[R1] eq. (3)", "[R1][R3] eq. (3)"))
+        self.assertIn("[R3] is cited but not listed under References", t["problems"])
 
-    def test_state_is_loaded_from_handoff_control_directory(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md", "[plan](plan.md) [handoff](docs/handoff/HANDOFF.md)\n")
-            write(root, "plan.md", "# Plan\n")
-            write(root, "docs/handoff/HANDOFF.md", "# Handoff\n")
-            expected = {"schema_version": 1, "last_tuned": "2026-08-18"}
-            write(root, "docs/handoff/.curation-state.json", json.dumps(expected))
+    def test_code_links_must_exist(self):
+        text = (GOOD_THEORY.replace("src/mobility.py::mu", "src/mobility.py::mobility")
+                .replace("test_fit.py::", "test_missing.py::"))
+        joined = "\n".join(self.theory(text)["problems"])
+        self.assertIn("`src/mobility.py::mobility` not defined", joined)
+        self.assertIn("Verification file `tests/gates/test_missing.py` not found", joined)
 
-            result = inventory.audit(root, args())
+    def test_duplicate_doi_and_missing_fields(self):
+        text = GOOD_THEORY.replace("- Status: validated\n", "") + (
+            "- [R2] Copy. DOI: 10.5555/example.0001 — checked: pdf\n")
+        joined = "\n".join(self.theory(text)["problems"])
+        self.assertIn("EQ-mu-field: no '- Status:' line", joined)
+        self.assertIn("appears in [R1], [R2]", joined)
 
-            self.assertEqual(expected, result["curation_state"])
+    def test_unfilled_template_is_flagged(self):
+        template = (ROOT / "skills" / "session-start" / "templates" / "theory.md").read_text(
+            encoding="utf-8")
+        t = self.theory(template)
+        self.assertTrue(any("placeholder" in p for p in t["problems"]))
+        self.assertEqual(t["missing_sections"], [])
 
-    def test_fresh_project_auto_detects_pre_init(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "README.md", "# Initial project concept\n")
+    def test_report_section(self):
+        self.theory(GOOD_THEORY.replace(" — checked: user 2026-09-26", ""))
+        text = inv.report(self.p.audit(), args())
+        self.assertIn("## 8. Theory document", text)
+        self.assertIn("identifier without", text)
 
-            result = inventory.audit(root, args())
-            output = inventory.report(result, args())
 
-            self.assertEqual("pre-init", result["mode"])
-            self.assertIn("no startup files", result["mode_reason"])
-            self.assertEqual([], [item for item in result["budget"]
-                                  if item.get("missing")])
-            self.assertTrue(result["reachability_deferred"])
-            self.assertIn("detected automatically", output)
-            self.assertIn("No session log expected", output)
-            self.assertIn("No orphan judgment is made", output)
-
-    def test_approved_pre_init_state_stays_pre_init_until_init_runs(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "docs/handoff/handoff-spec.md", "# Memory contract\n")
-            state = {
-                "schema_version": 1,
-                "last_tuned": "2026-08-20",
-                "last_tuned_session": None,
-                "harvested_through_session": 0,
-            }
-            write(root, "docs/handoff/.curation-state.json", json.dumps(state))
-
-            result = inventory.audit(root, args())
-
-            self.assertEqual("pre-init", result["mode"])
-
-    def test_inconsistent_lifecycle_evidence_is_ambiguous(self):
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            write(root, "AGENTS.md", "# Partial initialization\n")
-
-            result = inventory.audit(root, args())
-            output = inventory.report(result, args())
-            forced = inventory.audit(root, args(pre_init=True))
-
-            self.assertEqual("ambiguous", result["mode"])
-            self.assertIn("plan.md is missing", result["mode_reason"])
-            self.assertIn("do not continue with curation", output)
-            self.assertEqual("pre-init", forced["mode"])
-            self.assertIn("explicit", forced["mode_reason"])
+class TokenTests(unittest.TestCase):
+    def test_estimate_tokens_mixed_text(self):
+        self.assertEqual(inv.estimate_tokens("abcd" * 10), 10)
+        self.assertEqual(inv.estimate_tokens("가나다"), 2)
 
 
 if __name__ == "__main__":
