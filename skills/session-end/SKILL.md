@@ -38,15 +38,18 @@ result is a problem to fix or to put in `Next:`, never to hide.
 
 ## 4. Merge proposal
 
-When `python tools/harness.py status` shows no open gates for the leaf and the gate tests pass:
+When the gate tests pass and `python tools/harness.py status` shows no open gates for the
+leaf, or only gates whose reason starts with `blocked:`:
 
-1. Show `git log --oneline main..HEAD` and propose the merge with a one-line summary.
+1. Show `git log --oneline main..HEAD` and propose the merge with a one-line summary. If blocked
+   gates remain, name them: they stay open on `main` and are moved into a new leaf when what
+   they wait for arrives.
 2. Only after the user approves, run `git switch main`, then
    `git merge --no-ff feature/<leaf> -m "Merge feature/<leaf>: <summary>"`.
 3. Never squash: the checkpoint trailers are what curation harvests. Do not delete the branch
    unless the user asks.
 
-If gates remain open, do not propose a merge; the branch carries on next session.
+If any `gate:` marker remains open, do not propose a merge; the branch carries on next session.
 
 ## 5. Curation check
 

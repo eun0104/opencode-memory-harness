@@ -222,6 +222,26 @@ class StatusTests(unittest.TestCase):
         self.assertIsNone(s["next"])
         self.assertEqual(s["tried"], [])
 
+    def test_tool_caches_are_hidden_from_uncommitted(self):
+        self.repo.write("src/__pycache__/fit.cpython-311.pyc", "x")
+        self.repo.write(".pytest_cache/v/cache/lastfailed", "{}")
+        self.repo.write("src/real_work.py", "z = 3\n")
+        s = self.status()
+        self.assertEqual(s["uncommitted"], ["src/"])
+        self.assertEqual(s["hidden_cache_paths"], 1)
+        self.assertIn("tool-cache path(s) hidden", harness.render_status(s))
+        self.assertTrue(harness.is_cache_path("tests/gates/__pycache__/"))
+        self.assertFalse(harness.is_cache_path("src/cache_model.py"))
+
+    def test_only_blocked_gates_left_allows_merge_with_approval(self):
+        sh(self.repo.path, "switch", "-q", "-c", "feature/fit")
+        self.repo.write("tests/gates/test_fit.py",
+                        "import pytest\n@pytest.mark.xfail(strict=True, reason='blocked: 77 K data')\n"
+                        "def test_77k():\n    raise NotImplementedError\n")
+        text = harness.render_status(self.status())
+        self.assertIn("(1, 1 blocked)", text)
+        self.assertIn("only blocked gates remain", text)
+
     def test_not_a_repository(self):
         with tempfile.TemporaryDirectory() as tmp:
             s = harness.build_status(Path(tmp), "main")

@@ -93,7 +93,10 @@ tagged session log.
   - `strict=True`: an unexpected pass fails the run, so a met gate cannot stay marked open.
   - `raises=...`: an ImportError or typo does not masquerade as "not yet met".
   - Blocked gates use `reason="blocked: <what is missing>"`.
-- A leaf is done when its gate file has no xfail markers left and the tests pass.
+- A leaf is done when its gate file has no `gate:` markers left and the tests pass. Gates that
+  are only `blocked:` (waiting for data, hardware, another team) do not hold the leaf hostage:
+  with the user's approval the leaf merges, the blocked gates stay open on `main` where status
+  keeps showing them, and a new leaf takes them over when what they wait for arrives.
 - Slow tests (simulations, fits) carry `@pytest.mark.slow`. Status never runs tests: the harness
   finds open gates by reading the test files statically.
 
@@ -160,10 +163,15 @@ spends the L0 budget, and drifts as the code changes.
 
 ## Migration status
 
-- Rewriting to v3.1: `session-*` skills, `tools/harness.py`, and `context-curation`.
+- Done in v3.1: `session-*` skills, `tools/harness.py`, `context-curation` with its inventory,
+  README (EN/KO), tests. Verified end to end on a synthetic project: setup, gates written first,
+  a gate closed by strict XPASS, recovery from `status` alone, a blocked gate carried over a
+  merge, and the curation inventory counting the harvest.
 - Removed from v3.0: `docs/handoff/WORKING.md`, `docs/handoff/SESSION-LOG.md`,
   `docs/decisions.md`.
-- Removed from v2: root `plan.md`, `HANDOFF.md`, `handoff-spec.md`, session contract blocks.
+- Removed from v2: root `plan.md`, `HANDOFF.md`, `handoff-spec.md`, session contract blocks,
+  `INSTALL.md`.
+- Not yet tried: the internal GLM 5.2 agent following these skills in a real session.
 
 ## Open questions
 

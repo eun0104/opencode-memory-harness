@@ -38,8 +38,9 @@ the plan exist only in the conversation. Read little; write in this order.
 5. **Git.** If the project is not a Git work tree, say so and ask before `git init`. If the
    primary branch is not named `main`, tell the user; the harness assumes `main`. Run
    `git check-ignore -q <plan-path>`; if the plan is ignored, say it is not versioned and ask
-   how to handle it. Propose one setup commit on `main` with the exact paths (AGENTS.md,
-   `tools/harness.py`, `docs/adr/`) and message; commit only after approval.
+   how to handle it. Make sure `.gitignore` lists `__pycache__/` and `.pytest_cache/`. Propose
+   one setup commit on `main` with the exact paths (AGENTS.md, `tools/harness.py`, `docs/adr/`,
+   `.gitignore`) and message; commit only after approval.
 6. **Stop cleanly.** Mark every open todo completed or cancelled. Tell the user setup is done
    and that implementation should start in a new session with `session-start`.
 

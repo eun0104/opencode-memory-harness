@@ -90,6 +90,18 @@ def leaf_slug(branch):
     return branch[len(FEATURE_PREFIX):]
 
 
+CACHE_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".ipynb_checkpoints"}
+
+
+def is_cache_path(path: str) -> bool:
+    """Tool caches are never work in flight; hiding them keeps status from inviting a bad commit."""
+    return any(part in CACHE_PARTS for part in path.strip('"').replace("\\", "/").split("/"))
+
+
+def is_blocked(gate) -> bool:
+    return gate["reason"].startswith("blocked:")
+
+
 def gate_file_for(slug: str) -> Path:
     return GATES_DIR / ("test_" + re.sub(r"[^0-9A-Za-z_]", "_", slug) + ".py")
 
@@ -208,7 +220,7 @@ def build_status(root: Path, base: str) -> dict:
     status = {"git": True, "repo": False, "branch": None, "base": base, "leaf": None,
               "gate_file": None, "gate_file_exists": False, "next": None, "tried": [],
               "evidence": [], "branch_commits": 0, "leaf_gates": [], "other_gates": [],
-              "uncommitted": [], "warnings": [], "notes": []}
+              "uncommitted": [], "hidden_cache_paths": 0, "warnings": [], "notes": []}
     if git(root, "--version") is None:
         status["git"] = False
         status["notes"].append("git is not available")
@@ -241,7 +253,9 @@ def build_status(root: Path, base: str) -> dict:
         elif branch:
             status["notes"].append(f"on '{branch}', not a feature/* branch: no active leaf")
         porcelain = git(root, "status", "--porcelain") or ""
-        status["uncommitted"] = [line[3:] for line in porcelain.splitlines() if line.strip()]
+        paths = [line[3:] for line in porcelain.splitlines() if line.strip()]
+        status["uncommitted"] = [p for p in paths if not is_cache_path(p)]
+        status["hidden_cache_paths"] = len(paths) - len(status["uncommitted"])
 
     gates, errors = scan_gates(root)
     status["warnings"].extend(errors)
@@ -278,19 +292,29 @@ def render_status(s: dict) -> str:
             out.append("Tried (do not repeat):")
             out.extend(f"  - {item}" for item in s["tried"])
     if s["leaf"]:
-        out.append(f"Open gates for this leaf ({len(s['leaf_gates'])}) in {s['gate_file']}:")
+        blocked = [g for g in s["leaf_gates"] if is_blocked(g)]
+        detail = f", {len(blocked)} blocked" if blocked else ""
+        out.append(f"Open gates for this leaf ({len(s['leaf_gates'])}{detail}) in {s['gate_file']}:")
         if s["leaf_gates"]:
             out.extend(gate_line(g) for g in s["leaf_gates"])
+            if len(blocked) == len(s["leaf_gates"]):
+                out.append("  only blocked gates remain: the leaf may merge with the user's "
+                           "approval; the blocked gates stay open on main")
         elif s["gate_file_exists"]:
             out.append("  none - run the gate tests; if they pass, the leaf is ready to merge")
         else:
             out.append("  none")
     if s["other_gates"]:
         files = sorted({g["file"] for g in s["other_gates"]})
+        blocked = sum(1 for g in s["other_gates"] if is_blocked(g))
         label = "Open gates" if not s["leaf"] else "Open gates elsewhere"
-        out.append(f"{label}: {len(s['other_gates'])} in {len(files)} file(s): {', '.join(files)}")
+        detail = f" ({blocked} blocked)" if blocked else ""
+        out.append(f"{label}: {len(s['other_gates'])}{detail} in {len(files)} file(s): "
+                   f"{', '.join(files)}")
     if s["repo"]:
-        out.append("Uncommitted: " + (", ".join(s["uncommitted"]) if s["uncommitted"] else "none"))
+        hidden = s.get("hidden_cache_paths", 0)
+        out.append("Uncommitted: " + (", ".join(s["uncommitted"]) if s["uncommitted"] else "none")
+                   + (f"  ({hidden} tool-cache path(s) hidden)" if hidden else ""))
     notes = s["notes"] if s["repo"] else []
     for note in notes:
         out.append(f"Note: {note}")
