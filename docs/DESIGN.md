@@ -70,7 +70,8 @@ does the minimum instead, and curation runs later when there is session evidence
 | `.omo/` notepads (if present) | L3 source | oh-my-openagent executor | Per-plan learnings / decisions / issues. Harness does not duplicate them |
 | `docs/handoff/WORKING.md` | L1 | session-checkpoint, session-end | Live state. Replaces the old HANDOFF.md: one file, always current |
 | `docs/handoff/SESSION-LOG.md` | L3 | session-end | Append-only, tagged, searched not read |
-| `docs/decisions.md`, `docs/rules/`, `docs/domain/`, `docs/reference/` | L2 | context-curation | Facts that outlive one plan, promoted from notepads and the session log |
+| `docs/decisions.md` | L2 | session-start (planning rationale), context-curation | Choices and rejected alternatives that outlive one plan |
+| `docs/rules/`, `docs/domain/`, `docs/reference/` | L2 | context-curation | Facts that outlive one plan, promoted from notepads and the session log |
 
 HANDOFF.md is merged into WORKING.md. If WORKING.md is kept current during the session, a
 separate end-of-session snapshot would state the same facts twice.
@@ -118,8 +119,9 @@ Order of writes:
    Whether opencode picks up an AGENTS.md created mid-session, or only at the next session
    start, is unverified; either way, writing it first is never worse.
 2. Write the planning rationale (chosen approach, rejected alternatives and why) that is not
-   already in the plan file. The plan usually records *what*, not *why*. Destination: the
-   plan's notepad `decisions.md` if one exists at this point, otherwise `docs/decisions.md`.
+   already in the plan file. The plan usually records *what*, not *why*. Destination:
+   `docs/decisions.md`. Planning rationale outlives the plan, and per-plan notepads are easy to
+   lose once the plan is finished.
 3. Write WORKING.md with the first leaf goal and its gates, pointing to the plan item.
 4. Close all open todos and recommend starting implementation in a fresh session. If AGENTS.md
    turns out to load only at session start, this step is required, not recommended.
