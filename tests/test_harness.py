@@ -130,6 +130,17 @@ class ScanTests(unittest.TestCase):
         self.assertNotIn("test_77k", text)
         self.assertNotIn("test_mobility_300k", text)
 
+    def test_splatted_options_are_not_misreported(self):
+        (self.root / "tests" / "gates" / "test_splat.py").write_text(
+            "import pytest\nG = dict(strict=True, raises=AssertionError)\n"
+            "@pytest.mark.xfail(**G, reason='gate: splat')\ndef test_splat():\n    assert False\n",
+            encoding="utf-8")
+        gates, _ = harness.scan_gates(self.root)
+        splat = [g for g in gates if g["name"] == "test_splat"][0]
+        self.assertTrue(splat["opaque"])
+        self.assertEqual(splat["reason"], "gate: splat")
+        self.assertNotIn("test_splat", "\n".join(harness.gate_warnings(gates)))
+
     def test_ini_xfail_strict_makes_markers_strict(self):
         (self.root / "pytest.ini").write_text("[pytest]\nxfail_strict = true\n", encoding="utf-8")
         gates, _ = self.gates()

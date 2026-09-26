@@ -124,13 +124,15 @@ def xfail_info(decorator, default_strict: bool):
     last = name.rsplit(".", 1)[-1]
     if last == "expectedFailure":
         return {"kind": "expectedFailure", "reason": "", "strict": True, "raises": False,
-                "conditional": False}
+                "conditional": False, "opaque": False}
     if last != "xfail":
         return None
     info = {"kind": "xfail", "reason": "", "strict": default_strict, "raises": False,
-            "conditional": bool(call and call.args)}
+            "conditional": bool(call and call.args), "opaque": False}
     for kw in (call.keywords if call else []):
-        if kw.arg == "reason" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+        if kw.arg is None:
+            info["opaque"] = True  # **options: strict/raises cannot be read statically
+        elif kw.arg == "reason" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
             info["reason"] = kw.value.value
         elif kw.arg == "strict" and isinstance(kw.value, ast.Constant):
             info["strict"] = bool(kw.value.value)
@@ -188,10 +190,12 @@ def scan_gates(root: Path):
 def gate_warnings(gates):
     warnings = []
     for gate in gates:
+        if gate["kind"] != "xfail" or gate["opaque"]:
+            continue
         where = f"{gate['file']}:{gate['line']} {gate['name']}"
-        if gate["kind"] == "xfail" and not gate["strict"]:
+        if not gate["strict"]:
             warnings.append(f"{where}: xfail is not strict; a met gate would stay marked open")
-        if gate["kind"] == "xfail" and not gate["raises"] and not gate["reason"].startswith("blocked:"):
+        if not gate["raises"] and not gate["reason"].startswith("blocked:"):
             warnings.append(f"{where}: no raises=...; an import error would count as 'not yet met'")
     return warnings
 
