@@ -126,6 +126,13 @@ Order of writes:
 4. Close all open todos and recommend starting implementation in a fresh session. If AGENTS.md
    turns out to load only at session start, this step is required, not recommended.
 
+## Migration status
+
+- Done: `session-checkpoint`, `session-start`, `session-end`, with budget tests.
+- Not yet adapted: `context-curation` and `docs_inventory.py` still expect the v2 layout. On a
+  v3 project the inventory reports `ambiguous` (root `plan.md` missing), flags `HANDOFF.md` as
+  missing, classifies WORKING.md as L2 instead of L1, and does not see the `.omo/` plan.
+
 ## Open questions
 
 - Names of the continuation and compaction hooks in the internal oh-my-openagent build. Not

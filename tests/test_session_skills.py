@@ -31,7 +31,24 @@ class SkillBudgetTests(unittest.TestCase):
 
     def test_session_skills_exist(self):
         names = {p.parent.name for p in self.session_skills()}
-        self.assertTrue({"session-start", "session-checkpoint"} <= names, names)
+        self.assertTrue({"session-start", "session-checkpoint", "session-end"} <= names, names)
+
+    def test_session_end_log_heading_matches_inventory_parser(self):
+        from docs_inventory import SESSION_MARKER_RE
+        text = read(SKILLS / "session-end" / "SKILL.md")
+        headings = re.findall(r"^## Session NNN — YYYY-MM-DD$", text, re.MULTILINE)
+        self.assertEqual(len(headings), 1)
+        sample = "## Session 012 — 2026-09-26\n"
+        match = SESSION_MARKER_RE.search(sample)
+        self.assertIsNotNone(match)
+        self.assertEqual(int(match.group(1)), 12)
+
+    def test_session_end_never_uses_broad_staging(self):
+        text = read(SKILLS / "session-end" / "SKILL.md")
+        self.assertIn("git add -- <path>", text)
+        for line in text.splitlines():
+            if "git add -A" in line or "git add ." in line:
+                self.assertIn("Never", line)
 
     def test_each_session_skill_is_under_budget(self):
         for path in self.session_skills():
