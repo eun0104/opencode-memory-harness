@@ -62,13 +62,32 @@ does the minimum instead, and curation runs later when there is session evidence
 | File | Layer | Owner | Notes |
 |---|---|---|---|
 | `AGENTS.md` | L0 | session-start (creates), curation (tunes) | Anchor rules + routing. 2,000-token cap |
-| planner plan file (e.g. `.omo/plans/*.md`) | L1 | planning agent | Canonical plan. Pointed to, never copied |
+| `.omo/boulder.json` | — | oh-my-openagent | Registry of works; `active_plan` locates the current plan. Read, never written |
+| `.omo/plans/{name}.md` | L1 | Prometheus (planner) | Canonical plan. Pointed to, never copied |
+| `.omo/notepads/{plan-name}/*.md` | L3 source | oh-my-openagent executor | learnings / decisions / issues / problems per plan. Harness does not duplicate them |
 | `docs/handoff/WORKING.md` | L1 | session-checkpoint, session-end | Live state. Replaces the old HANDOFF.md: one file, always current |
-| `docs/handoff/DECISIONS.md` | L2 | session-start (planning rationale), session-end | Choices and rejected alternatives |
 | `docs/handoff/SESSION-LOG.md` | L3 | session-end | Append-only, tagged, searched not read |
+| `docs/decisions.md`, `docs/rules/`, `docs/domain/`, `docs/reference/` | L2 | context-curation | Facts that outlive one plan, promoted from notepads and the session log |
 
 HANDOFF.md is merged into WORKING.md. If WORKING.md is kept current during the session, a
 separate end-of-session snapshot would state the same facts twice.
+
+### Division of labour with oh-my-openagent
+
+oh-my-openagent already keeps per-plan notepads. The harness does not write a parallel
+decisions or gotchas file during execution; that would state the same fact in two places.
+
+- **Notepads** hold what the executor learns inside one plan (raw material).
+- **WORKING.md** holds the state needed to resume after compaction: current leaf, gates with
+  evidence, next action, in-flight files. The notepads do not carry gate evidence or the exact
+  next action.
+- **L2 docs** hold facts that must outlive the plan. context-curation harvests the notepads and
+  the session log, and promotes what passes the promotion test. A finished plan's notepads are
+  otherwise easy to lose track of.
+
+Plan lookup order for session-start: `active_plan` in `.omo/boulder.json`, then the single
+file under `.omo/plans/`, then ask the user. The internal build may use a different file name
+(the user recalls `.omo/plan.md`), so the lookup must not hard-code one name.
 
 ## First session after planning
 
@@ -76,16 +95,21 @@ The window is already heavy and the planning rationale exists only in the conver
 the writes by loss risk:
 
 1. Locate the plan file by path. Do not re-read it if it is already in context.
-2. Write the planning rationale (chosen approach, rejected alternatives and why) to
-   DECISIONS.md. The plan file usually records *what*, not *why*.
+2. Write the planning rationale (chosen approach, rejected alternatives and why) that is not
+   already in the plan file. The plan usually records *what*, not *why*. Destination to be
+   decided: the plan's notepad `decisions.md` if it exists at this point, otherwise
+   `docs/decisions.md`.
 3. Write WORKING.md with the first leaf goal and its gates, pointing to the plan item.
 4. Write the minimal AGENTS.md with the anchor rules and the plan pointer.
 5. Close all open todos and recommend starting implementation in a fresh session.
 
 ## Open questions
 
-- Exact plan file path used by the internal planner, and whether that folder is git-ignored
-  (an ignored canonical plan would not be versioned).
+- Upstream docs say plans go to `.omo/plans/{name}.md` and state to `.omo/boulder.json`.
+  Confirm the internal build uses the same layout, and whether `.omo/` is git-ignored (an
+  ignored canonical plan would not be versioned).
+- Whether notepads exist before execution starts, and whether they are written outside the
+  plan-execution command.
 - Names of the continuation and compaction hooks in the internal oh-my-openagent build, and
   where the 70% threshold is configured.
 - Whether the executing agent ticks checkboxes in the plan file, or leaves the plan unchanged.
