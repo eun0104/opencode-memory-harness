@@ -62,9 +62,8 @@ does the minimum instead, and curation runs later when there is session evidence
 | File | Layer | Owner | Notes |
 |---|---|---|---|
 | `AGENTS.md` | L0 | session-start (creates), curation (tunes) | Anchor rules + routing. 2,000-token cap |
-| `.omo/boulder.json` | — | oh-my-openagent | Registry of works; `active_plan` locates the current plan. Read, never written |
-| `.omo/plans/{name}.md` | L1 | Prometheus (planner) | Canonical plan. Pointed to, never copied |
-| `.omo/notepads/{plan-name}/*.md` | L3 source | oh-my-openagent executor | learnings / decisions / issues / problems per plan. Harness does not duplicate them |
+| `.omo/` plan file | L1 | planner | Canonical plan. Path recorded in AGENTS.md; pointed to, never copied |
+| `.omo/` notepads (if present) | L3 source | oh-my-openagent executor | Per-plan learnings / decisions / issues. Harness does not duplicate them |
 | `docs/handoff/WORKING.md` | L1 | session-checkpoint, session-end | Live state. Replaces the old HANDOFF.md: one file, always current |
 | `docs/handoff/SESSION-LOG.md` | L3 | session-end | Append-only, tagged, searched not read |
 | `docs/decisions.md`, `docs/rules/`, `docs/domain/`, `docs/reference/` | L2 | context-curation | Facts that outlive one plan, promoted from notepads and the session log |
@@ -85,31 +84,34 @@ decisions or gotchas file during execution; that would state the same fact in tw
   the session log, and promotes what passes the promotion test. A finished plan's notepads are
   otherwise easy to lose track of.
 
-Plan lookup order for session-start: `active_plan` in `.omo/boulder.json`, then the single
-file under `.omo/plans/`, then ask the user. The internal build may use a different file name
-(the user recalls `.omo/plan.md`), so the lookup must not hard-code one name.
+Plan lookup: the path is known exactly once, when the plan has just been written and is still
+in context. session-start records it as one line in AGENTS.md, which survives compaction, so
+every later session and every recovery reads it from there. The harness never hard-codes the
+`.omo/` layout.
+
+- New or switched plan: update that one AGENTS.md line right after planning, while the path is
+  still in context.
+- Path not in context (e.g. session-start runs in a fresh session): list the `.md` files under
+  `.omo/` and ask the user which one is the plan. Do not guess.
+- Whether `.omo/` is git-ignored and whether notepads exist are checked on the spot
+  (`git check-ignore`, a directory listing), not assumed.
 
 ## First session after planning
 
 The window is already heavy and the planning rationale exists only in the conversation. Order
 the writes by loss risk:
 
-1. Locate the plan file by path. Do not re-read it if it is already in context.
+1. Take the plan path from context (the plan was just written). Do not re-read the plan.
 2. Write the planning rationale (chosen approach, rejected alternatives and why) that is not
-   already in the plan file. The plan usually records *what*, not *why*. Destination to be
-   decided: the plan's notepad `decisions.md` if it exists at this point, otherwise
-   `docs/decisions.md`.
+   already in the plan file. The plan usually records *what*, not *why*. Destination: the
+   plan's notepad `decisions.md` if one exists at this point, otherwise `docs/decisions.md`.
 3. Write WORKING.md with the first leaf goal and its gates, pointing to the plan item.
-4. Write the minimal AGENTS.md with the anchor rules and the plan pointer.
+4. Write the minimal AGENTS.md with the anchor rules and the plan path.
 5. Close all open todos and recommend starting implementation in a fresh session.
 
 ## Open questions
 
-- Upstream docs say plans go to `.omo/plans/{name}.md` and state to `.omo/boulder.json`.
-  Confirm the internal build uses the same layout, and whether `.omo/` is git-ignored (an
-  ignored canonical plan would not be versioned).
-- Whether notepads exist before execution starts, and whether they are written outside the
-  plan-execution command.
 - Names of the continuation and compaction hooks in the internal oh-my-openagent build, and
-  where the 70% threshold is configured.
-- Whether the executing agent ticks checkboxes in the plan file, or leaves the plan unchanged.
+  where the 70% threshold is configured. Not blocking; the design does not depend on them.
+- Whether the executing agent ticks checkboxes in the plan file. Observable in use; if it does,
+  WORKING.md can rely on the plan for progress and keep only the current leaf.
