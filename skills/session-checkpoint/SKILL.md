@@ -33,8 +33,10 @@ named `checkpoint`. After the checkpoint, take the next items from `Next:` and t
 1. **Branch.** Run `git rev-parse --abbrev-ref HEAD`. If it is not `feature/<leaf>`, do not
    commit; tell the user that work belongs on a leaf branch opened by `session-start`.
 2. **Closed gates.** For each gate you believe passes, run it:
-   `pytest "tests/gates/test_<leaf>.py::<test_name>" -q`. If it passes, remove its xfail
-   marker. If passing required changing its assertion or tolerance, write an ADR first.
+   `pytest "tests/gates/test_<leaf>.py::<test_name>" -q`. While the marker is on, a met gate
+   is reported as `FAILED ... [XPASS(strict)]`: that means the criterion is met. Remove its
+   xfail marker and run it again; it must now pass. Plain `XFAIL` means not met yet. If
+   passing required changing its assertion or tolerance, write an ADR first.
 3. **Decisions.** For a choice between alternatives that should outlive this branch, write an
    ADR in `docs/adr/` with the next number, following the format of `0001`.
 4. **Theory.** If this checkpoint adds or changes a physical equation, assumption, parameter

@@ -73,6 +73,10 @@ gate는 `@pytest.mark.xfail(strict=True, raises=(AssertionError, NotImplementedE
 
 ## 작업 흐름
 
+시나리오별 단계, 실제 출력 예시, 문제 해결은 **[docs/USAGE.ko.md](docs/USAGE.ko.md)** 사용
+안내서에 있습니다. 요약하면 이렇습니다.
+
+
 1. oh-my-openagent 계획 에이전트와 계획 파일이 만들어질 때까지 계획합니다.
 2. 같은 세션에서 `session-start`를 실행합니다. 계획 경로를 담은 AGENTS.md 구역을 쓰고, 도구를
    복사하고, 계획의 근거를 ADR로 남기고, 설정 커밋을 제안합니다. 그리고 멈춥니다. 이 세션은
@@ -108,8 +112,10 @@ New-Item -ItemType Directory -Force "$HOME\.config\opencode\commands" | Out-Null
 Copy-Item skills\context-curation\command\tune-docs.md "$HOME\.config\opencode\commands\"
 ```
 
-복사한 뒤 opencode를 다시 시작해야 스킬이 인식됩니다. `tools/harness.py`는 `session-start`가
-첫 실행 때 각 프로젝트에 복사합니다.
+opencode는 `.opencode/skills/<이름>/SKILL.md`(프로젝트별)나
+`~/.config/opencode/skills/<이름>/SKILL.md`(전역)에서 스킬을 찾습니다. 보이지 않으면 opencode를
+다시 시작하세요. `tools/harness.py`는 `session-start`가 첫 실행 때 각 프로젝트에 복사합니다.
+설치 확인과 업데이트 방법은 [docs/USAGE.ko.md](docs/USAGE.ko.md#2-설치와-확인)를 보세요.
 
 요구 사항: Python 3.8 이상, Git, 프로젝트의 pytest. 하네스 도구 자체는 Python 표준
 라이브러리만 쓰고 네트워크 요청을 하지 않습니다.
@@ -122,6 +128,7 @@ skills/
 ├── session-checkpoint/   SKILL.md
 ├── session-end/          SKILL.md
 └── context-curation/     SKILL.md, scripts/docs_inventory.py, references/, templates/, command/
+docs/USAGE.ko.md          시나리오별 사용 안내서 (영어판 USAGE.md)
 docs/DESIGN.md            설계 계약과 그 근거
 tests/                    표준 라이브러리 회귀 테스트
 ```
