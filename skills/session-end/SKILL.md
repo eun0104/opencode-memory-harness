@@ -36,6 +36,10 @@ Run `pytest tests/gates/test_<leaf>.py -q -rxX`. If slow tests would take long, 
 before running them. Report passed, xfailed, and failed counts. A FAILED or XPASS(strict)
 result is a problem to fix or to put in `Next:`, never to hide.
 
+If the leaf changed model code, check `docs/theory.md`: every Implementation and Verification
+line names a function and a test that exist, and Model overview still describes the current
+model. List the remaining `[TBD: ...]` items in your report.
+
 ## 4. Merge proposal
 
 When the gate tests pass and `python tools/harness.py status` shows no open gates for the

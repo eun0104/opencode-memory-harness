@@ -8,6 +8,7 @@ Once a fact passes the promotion test, it needs exactly one home.
 |---|---|---|---|
 | A hard constraint ("never", "must always") | `docs/rules/<topic>-invariants.md` | L2 | **One line, verbatim** + link |
 | A choice between alternatives, with reasoning | `docs/adr/NNNN-<slug>.md` | L2 | Covered by the `docs/adr/` row |
+| Physical theory, equations, assumptions, validity, sources | `docs/theory.md`, rewritten in place | L2 | Conditional pointer + citation invariant |
 | System structure, module boundaries, data flow | `docs/architecture.md` | L2 | Conditional pointer |
 | Odd behaviour of an external system | `docs/domain/gotchas.md` | L2 | Conditional pointer |
 | Domain knowledge the agent lacks (physics, process, notation) | `docs/domain/<topic>.md` | L2 | Conditional pointer |
@@ -23,6 +24,9 @@ and cap them at roughly seven — beyond that they stop being read as rules and 
 read as prose.
 
 ## Choosing between neighbours
+
+- **theory vs. ADR** — `docs/theory.md` states the physics applied *now*, rewritten in place. An ADR records *why* a form was adopted or replaced, and keeps the old form. A model change touches both.
+- **theory vs. reference** — theory holds a parameter's role and physical bounds; a value fitted to a dataset is a result and goes to `docs/reference/parameters.md`.
 
 - **decisions vs. architecture** — decisions record *why this and not that*, at a point in time, immutable. Architecture records *what is true now*, and is rewritten as things change. If the entry has a rejected alternative, it's a decision.
 - **gotchas vs. domain** — gotchas are surprises about tools and systems. Domain is knowledge about the subject matter. Both are "things the agent can't derive", but they're consulted at different moments.

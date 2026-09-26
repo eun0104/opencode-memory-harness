@@ -7,7 +7,7 @@ curation history. This is a prior, not a checklist.
 ## Contents
 
 1. Scientific traceability contract
-2. Minimum durable model ledger
+2. Theory document
 3. Evidence-state boundary
 4. Verification protocol
 5. Project memory contract additions
@@ -29,29 +29,34 @@ Never fabricate a missing link. Mark it `[TBD: source]`, `[TBD: implementation]`
 `[TBD: verification]` and make it a `blocked:` gate test or a proposal blocker. A citation alone is not verification, and a passing fit alone does not
 identify the correct mechanism.
 
-## Minimum durable model ledger
+## Theory document
 
-When the project has at least one non-trivial governing equation or mechanism, prefer one
-`docs/domain/theory-ledger.md` before creating several topic files. Give every equation or claim a
-stable project ID so the code, gate tests, and ADRs can refer to the same object.
+Keep the applied theory in **one living file, `docs/theory.md`**, created from the
+`session-start` template. It is not a log of entries appended over time: whenever the model
+changes, the affected sections are rewritten in place, the model overview included, so the file
+always reads as one coherent account of the physics applied now. Replaced forms leave the file
+and are recorded, with their reason, in an ADR.
 
-```markdown
-### EQ-<stable-id> — <equation or claim name>
-**Evidence state:** hypothesis | adopted | validated | rejected | superseded
-**Canonical form:** <equation in project notation>
-**Symbols and units:** <definitions, unit system, sign and boundary conventions>
-**Source or derivation:** <paper/textbook section/equation, or project derivation with session>
-**Assumes:** <scientific assumptions inherited by the form>
-**Valid for:** <regime, scale, dimensionality, boundary conditions>
-**Approximation:** <numerical or analytical approximation, or none>
-**Combined with:** <other IDs and compatibility or known tension>
-**Implemented in:** `<file>:<symbol>`
-**Verified by:** <test, limiting case, benchmark, conservation check, or dataset>
-**Last verified:** YYYY-MM-DD
-```
+Each equation keeps a stable ID (`EQ-<id>`) so code comments, gate tests, and ADRs can refer to
+the same object, and carries: symbols and units, assumptions, validity range, source,
+implementation (`path.py::function`), verification (`path.py::test`), and status.
 
-Use exact internal citation locations that the corporate environment permits. Do not copy a
-paper into project docs; record enough provenance for an authorized reader to recover the source.
+### Citation integrity
+
+A fabricated citation is worse than none: it turns a guess into apparent authority.
+
+- Record a DOI, arXiv ID, ISBN, or internal report number **only** if it was read from the
+  source itself or given by the user. Never from memory; a recalled identifier is exactly what a
+  fabricated one looks like.
+- Say how it was checked: `checked: pdf`, `checked: user`, or `checked: online` with the date.
+- Cite the location (equation number, section, page). If the project's form differs from the
+  source, write `adapted from` and state the change.
+- Without a checkable identifier, write `[TBD: source]` and list it under Open questions.
+- Record equations and locations, never copied passages; keep enough provenance for an
+  authorized reader to recover the source.
+
+`docs_inventory.py` checks all of this mechanically: missing fields, malformed or unchecked
+identifiers, cited-but-unlisted references, and implementation or test links that do not exist.
 
 ## Evidence-state boundary
 
@@ -60,9 +65,9 @@ Keep these meanings separate:
 | State or kind | Meaning | Durable destination |
 |---|---|---|
 | Hypothesis | Plausible but not established for this project | An open gate that would test it; ADR `proposed` if a choice depends on it |
-| Adopted model | Deliberately selected for implementation | Theory ledger + ADR |
-| Validated model | Passed named analytical, numerical, or empirical checks | Theory ledger naming the passing gate tests |
-| Numerical approximation | Computational substitution for a scientific form | Theory ledger; never disguise as theory |
+| Adopted model | Deliberately selected for implementation | `docs/theory.md` + ADR |
+| Validated model | Passed named analytical, numerical, or empirical checks | `docs/theory.md`, Verification naming the passing gate tests |
+| Numerical approximation | Computational substitution for a scientific form | `docs/theory.md`, stated as an approximation; never disguised as theory |
 | Fitted parameter | Empirical result tied to a dataset and free/fixed split | `docs/reference/parameters.md` after acceptance |
 | Rejected/superseded model | Tested or replaced with a reason | ADR, with revisit condition |
 
@@ -74,7 +79,7 @@ hypothesis to `adopted` or `validated` merely because it recurs.
 Verify each link independently when changing or curating a scientific model:
 
 1. **Source fidelity:** confirm the cited source or project derivation supports the recorded form
-   and assumptions. If the source is unavailable, retain the claim but mark verification pending.
+   and assumptions, and that its identifier was checked, not recalled. If the source is unavailable, retain the claim but mark verification pending.
 2. **Mathematical integrity:** check notation, dimensions or units, signs, boundary/initial
    conditions, limiting behavior, and compatibility with mechanisms it is combined with.
 3. **Implementation fidelity:** map each material term and approximation to code. Document any
@@ -113,6 +118,6 @@ dataset, method, uncertainty or fit quality, and provenance.
 - Never extrapolate beyond the recorded validity or validation domain without flagging it.
 - Never convert an unavailable source or unresolved derivation into an uncited assertion.
 
-Put only the applicable one-line invariants in AGENTS.md and route details to the ledger or rules
+Put only the applicable one-line invariants in AGENTS.md and route details to `docs/theory.md` or a rules
 document. Every invariant needs an explicit alternative action so it can be followed rather than
 worked around.

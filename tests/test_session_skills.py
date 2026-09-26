@@ -92,6 +92,27 @@ class TemplateTests(unittest.TestCase):
             with self.subTest(part=part):
                 self.assertIn(part, text)
 
+    def test_theory_template_is_one_living_document_with_citation_rule(self):
+        text = read(START / "templates" / "theory.md")
+        for heading in ("## Model overview", "## Equations", "## Coupling and known tensions",
+                        "## Validity domain", "## Parameters", "## Open questions",
+                        "## References"):
+            with self.subTest(heading=heading):
+                self.assertIn(heading, text)
+        header = text[:text.index("-->")]
+        self.assertIn("Rewrite the affected sections in place", header)
+        self.assertIn("Never from memory", header)
+        self.assertIn("[TBD: source]", header)
+        self.assertIn("checked: <pdf | user | online>", text)
+
+    def test_theory_is_wired_into_every_session_skill(self):
+        for name in ("session-start", "session-checkpoint", "session-end"):
+            with self.subTest(skill=name):
+                self.assertIn("docs/theory.md", read(SKILLS / name / "SKILL.md"))
+        start = read(START / "SKILL.md")
+        self.assertIn("templates/theory.md", start)
+        self.assertIn("Never write a DOI or citation", start)
+
     def test_skills_reference_files_that_exist(self):
         start = read(START / "SKILL.md")
         for rel in ("templates/agents-section.md", "templates/gate_test.py",

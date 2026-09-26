@@ -60,6 +60,7 @@ because nothing prompts anyone to update them.
 ## Invariants
 - Never invent or interpolate measured data. → `docs/rules/measurement-invariants.md`
 - Never change a governing equation without an ADR. → `docs/rules/modeling-invariants.md`
+- Never write a DOI or citation that was not read from the source or given by the user; write [TBD: source]. → `docs/theory.md`
 ```
 
 One line, imperative, no hedging. The paragraph, including the "instead" path, lives in the

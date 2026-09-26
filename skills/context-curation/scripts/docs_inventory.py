@@ -14,6 +14,8 @@ Reports:
   7. ADRs           - count, status, and records missing Status or Source
   8. Harvest        - merges and tagged checkpoint trailers since the last curation,
                       notepads under .omo/, and gate files that stayed open too long
+  9. Theory         - docs/theory.md: every equation has source, implementation, and
+                      verification that exist; every reference has a checked identifier
 
 Usage:
     python docs_inventory.py --root .
@@ -61,6 +63,18 @@ ADR_NAME_RE = re.compile(r"^(\d{4})-[\w.-]+\.md$")
 TRAILER_RE = re.compile(r"^(Next|Tried|Evidence|Learned|ADR):\s*(.+?)\s*$")
 TAG_RE = re.compile(r"^\[(\w+)\]")
 XFAIL_TEXT_RE = re.compile(r"\bxfail\s*\(|\bexpectedFailure\b")
+
+THEORY_DOC = "docs/theory.md"
+EQ_HEADING_RE = re.compile(r"^###\s+(EQ-[\w.-]+)", re.MULTILINE)
+SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+FIELD_RE = r"^\s*-\s*{}:\s*(.*)$"
+REF_CITE_RE = re.compile(r"\[(R\d+)\]")
+REF_ENTRY_RE = re.compile(r"^-\s*\[(R\d+)\]", re.MULTILINE)
+DOI_RE = re.compile(r"\bDOI:\s*(\S+)", re.IGNORECASE)
+DOI_VALID_RE = re.compile(r"^10\.\d{4,9}/[^\s<>]+$")
+OTHER_ID_RE = re.compile(r"\b(arXiv|ISBN|Internal):\s*\S+", re.IGNORECASE)
+CHECKED_RE = re.compile(r"\bchecked:\s*(pdf|user|online)\b", re.IGNORECASE)
+CODE_REF_RE = re.compile(r"`([^`\s]+\.py)::(\w+)`")
 
 
 # --------------------------------------------------------------------------
@@ -358,6 +372,123 @@ def harvest_summary(root: Path, since, base: str):
     return summary
 
 
+def sections(text: str):
+    """{heading: body} for level-2 sections."""
+    found = list(SECTION_RE.finditer(text))
+    out = {}
+    for i, match in enumerate(found):
+        end = found[i + 1].start() if i + 1 < len(found) else len(text)
+        out[match.group(1)] = text[match.end():end]
+    return out
+
+
+def field(block: str, name: str):
+    """Value of a '- Name:' line, including indented continuation lines."""
+    lines = block.splitlines()
+    head = re.compile(FIELD_RE.format(re.escape(name)), re.IGNORECASE)
+    for i, line in enumerate(lines):
+        match = head.match(line)
+        if not match:
+            continue
+        value = [match.group(1).strip()]
+        for extra in lines[i + 1:]:
+            if extra.startswith((" ", "\t")) and extra.strip() and not extra.lstrip().startswith("-"):
+                value.append(extra.strip())
+            else:
+                break
+        return " ".join(value)
+    return None
+
+
+def code_ref_problems(root: Path, eq: str, label: str, value: str):
+    """Check `path.py::name` references: the file exists and defines the name."""
+    problems = []
+    for path, name in CODE_REF_RE.findall(value or ""):
+        target = root / path
+        if not target.is_file():
+            problems.append(f"{eq}: {label} file `{path}` not found")
+        elif not re.search(rf"^\s*(async\s+)?(def|class)\s+{re.escape(name)}\b",
+                           read_text(target) or "", re.MULTILINE):
+            problems.append(f"{eq}: {label} `{path}::{name}` not defined in that file")
+    return problems
+
+
+def audit_theory(root: Path):
+    """Structure, citation, and code-link checks for docs/theory.md."""
+    path = root / THEORY_DOC
+    if not path.is_file():
+        return {"exists": False}
+    text = strip_fenced_code(read_text(path) or "")
+    body = sections(text)
+    problems, tbd = [], []
+
+    heads = list(EQ_HEADING_RE.finditer(text))
+    cited = set()
+    for i, match in enumerate(heads):
+        eq = match.group(1)
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        nxt = SECTION_RE.search(text, match.end())
+        if nxt and nxt.start() < end:
+            end = nxt.start()
+        block = text[match.end():end]
+        for name in ("Source", "Implementation", "Verification", "Status"):
+            if field(block, name) is None:
+                problems.append(f"{eq}: no '- {name}:' line")
+        source = field(block, "Source") or ""
+        refs = set(REF_CITE_RE.findall(source))
+        cited |= refs
+        if "[TBD" not in source and not refs and "derived here" not in source.lower():
+            problems.append(f"{eq}: source cites no [Rn] reference, derivation, or [TBD: source]")
+        for name in ("Symbols and units", "Assumptions", "Valid for", "Source",
+                     "Implementation", "Verification"):
+            if "[TBD" in (field(block, name) or ""):
+                tbd.append(f"{eq}: {name.lower()}")
+        for name in ("Implementation", "Verification"):
+            problems += code_ref_problems(root, eq, name, field(block, name))
+
+    references = body.get("References", "")
+    entries = list(REF_ENTRY_RE.finditer(references))
+    defined, dois = {}, {}
+    for i, match in enumerate(entries):
+        ref = match.group(1)
+        end = entries[i + 1].start() if i + 1 < len(entries) else len(references)
+        entry = references[match.start():end]
+        defined[ref] = entry
+        if "<" in entry and ">" in entry:
+            problems.append(f"[{ref}]: template placeholder left in the entry")
+        doi = DOI_RE.search(entry)
+        has_other = OTHER_ID_RE.search(entry)
+        if doi and doi.group(1).startswith("[TBD"):
+            tbd.append(f"[{ref}]: identifier")
+        elif doi:
+            value = doi.group(1).rstrip(".,;")
+            if not DOI_VALID_RE.match(value):
+                problems.append(f"[{ref}]: malformed DOI `{value}`")
+            dois.setdefault(value.lower(), []).append(ref)
+        elif not has_other:
+            if "[TBD" in entry:
+                tbd.append(f"[{ref}]: identifier")
+            else:
+                problems.append(f"[{ref}]: no DOI, arXiv, ISBN, or Internal identifier, "
+                                "and no [TBD: source]")
+        if (doi and not doi.group(1).startswith("[TBD")) or has_other:
+            if not CHECKED_RE.search(entry):
+                problems.append(f"[{ref}]: identifier without 'checked: pdf | user | online'")
+    for value, refs in dois.items():
+        if len(refs) > 1:
+            problems.append(f"DOI {value} appears in {', '.join('[' + r + ']' for r in refs)}")
+    for ref in sorted(cited - set(defined)):
+        problems.append(f"[{ref}] is cited but not listed under References")
+    unused = sorted(set(defined) - cited - set(REF_CITE_RE.findall(
+        "\n".join(v for k, v in body.items() if k not in ("References", "Equations")))))
+
+    missing_sections = [name for name in ("Model overview", "Equations", "References")
+                        if name not in body]
+    return {"exists": True, "equations": len(heads), "references": len(defined),
+            "problems": problems, "tbd": tbd, "unused_references": unused,
+            "missing_sections": missing_sections}
+
+
 def stale_gates(root: Path, stale_days: int):
     """Gate files that still contain xfail markers and were last committed long ago."""
     gates_dir = root / GATES_DIR
@@ -498,6 +629,7 @@ def audit(root: Path, args) -> dict:
         "notepads": {"files": len(notepads),
                      "tokens": sum(estimate_tokens(read_text(p) or "") for p in notepads)},
         "stale_gates": stale_gates(root, args.stale_days),
+        "theory": audit_theory(root),
         "curation_state": state,
     }
 
@@ -636,6 +768,25 @@ def report(result: dict, args) -> str:
         out.extend(f"- `{g['path']}` - {g['open_markers']} open marker(s), last commit "
                    f"{g['age_days']} days ago" for g in result["stale_gates"])
     out.append("")
+
+    t = result["theory"]
+    if t["exists"]:
+        out += ["## 8. Theory document", "",
+                f"`{THEORY_DOC}`: {t['equations']} equation(s), {t['references']} reference(s)."]
+        if t["missing_sections"]:
+            out.append("Missing sections: " + ", ".join(t["missing_sections"]) + ".")
+        if t["problems"]:
+            out += ["", "**Problems (fix before trusting the document):**"]
+            out.extend(f"- {p}" for p in t["problems"])
+        if t["tbd"]:
+            out += ["", "Open `[TBD]` links: " + "; ".join(t["tbd"]) + "."]
+        if t["unused_references"]:
+            out.append("Listed but never cited: "
+                       + ", ".join(f"[{r}]" for r in t["unused_references"]) + ".")
+        if not (t["problems"] or t["tbd"] or t["missing_sections"]):
+            out.append("Every equation has a source, implementation, and verification; every "
+                       "reference has a checked identifier.")
+        out.append("")
     return "\n".join(out)
 
 

@@ -44,6 +44,20 @@ gate는 `@pytest.mark.xfail(strict=True, raises=(AssertionError, NotImplementedE
 표시합니다. 아직 못 맞춘 기준은 XFAIL로 남고, import 오류나 오타는 "아직 못 맞춤"으로 숨지
 않고 실패로 드러나며, 통과하기 시작했는데 표시가 남아 있으면 표시를 뗄 때까지 실패합니다.
 
+## 물리 이론과 근거 문헌
+
+물리 이론을 찾고, 접목하고, 갱신하면서 구현하는 프로젝트라면 `session-start`가
+**`docs/theory.md`** 를 만듭니다. 지금 적용 중인 물리를 담는 하나의 살아 있는 문서입니다.
+모델이 바뀌면 코드를 바꾼 그 체크포인트에서 해당 부분을 제자리에서 다시 써서, 파일이 덧붙인
+메모 더미가 되지 않고 늘 한 흐름으로 읽히게 합니다. 교체된 식은 ADR에 옛 형태와 이유가
+남습니다.
+
+각 식은 고유 ID(`EQ-<id>`), 근거 문헌과 위치, 구현 함수, 검증 테스트를 가집니다. 거짓 근거를
+막기 위해 DOI(또는 arXiv ID, ISBN, 사내 보고서 번호)는 원문에서 직접 읽었거나 사용자가 준 것만
+기록하고, 어떻게 확인했는지(`checked: pdf | user | online`)를 함께 남깁니다. 그렇지 않으면
+`[TBD: source]`로 둡니다. 큐레이션 감사가 이 모든 것을 검사하며, 적어 둔 함수와 테스트가 실제로
+존재하는지도 확인합니다.
+
 ## 구성
 
 | 구성 요소 | 언제 | 하는 일 |
@@ -104,7 +118,7 @@ Copy-Item skills\context-curation\command\tune-docs.md "$HOME\.config\opencode\c
 
 ```text
 skills/
-├── session-start/        SKILL.md, scripts/harness.py, templates (AGENTS.md 구역, gate 테스트, ADR 0001)
+├── session-start/        SKILL.md, scripts/harness.py, templates (AGENTS.md 구역, gate 테스트, ADR 0001, 이론 문서)
 ├── session-checkpoint/   SKILL.md
 ├── session-end/          SKILL.md
 └── context-curation/     SKILL.md, scripts/docs_inventory.py, references/, templates/, command/

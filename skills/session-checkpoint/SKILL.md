@@ -37,10 +37,17 @@ named `checkpoint`. After the checkpoint, take the next items from `Next:` and t
    marker. If passing required changing its assertion or tolerance, write an ADR first.
 3. **Decisions.** For a choice between alternatives that should outlive this branch, write an
    ADR in `docs/adr/` with the next number, following the format of `0001`.
-4. **Stage.** From `git status --short`, pick the files that belong to this work and run
+4. **Theory.** If this checkpoint adds or changes a physical equation, assumption, parameter
+   role, or validity range in code, update `docs/theory.md` in the same commit. Rewrite the
+   affected sections in place, Model overview included, so the file stays one current account;
+   never append update notes. Replacing or removing an equation needs an ADR first that records
+   the old form. For sources, follow the citation rule in the file's header: an identifier only
+   if read from the source or given by the user, with `checked:`; otherwise `[TBD: source]`.
+   If the file does not exist yet, create it as `session-start` First run step 5 describes.
+5. **Stage.** From `git status --short`, pick the files that belong to this work and run
    `git add -- <path> <path> ...`. Never stage generated data, large outputs, or credentials.
    Never `git add -A` or `git add .`.
-5. **Commit.** Pass each line as its own `-m` argument:
+6. **Commit.** Pass each line as its own `-m` argument:
 
    ```text
    git commit -m "checkpoint: <what changed, one line>" -m "Next: <exact next action>" -m "Tried: <approach> — <why it failed>"
@@ -55,7 +62,7 @@ named `checkpoint`. After the checkpoint, take the next items from `Next:` and t
    | `ADR:` | Path of an ADR written in this checkpoint |
 
    In PowerShell, avoid `$` and backticks inside the double quotes.
-6. **Continue.** Do not stop the work for a checkpoint. Go on with `Next:`.
+7. **Continue.** Do not stop the work for a checkpoint. Go on with `Next:`.
 
 ## Do not
 

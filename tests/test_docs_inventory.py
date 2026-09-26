@@ -277,6 +277,114 @@ class GitHarvestTests(unittest.TestCase):
         self.assertEqual([g["path"] for g in stale], ["tests/gates/test_old.py"])
 
 
+GOOD_THEORY = """# Theory — demo
+
+## Model overview
+
+Field-dependent mobility with velocity saturation.
+
+## Equations
+
+### EQ-mu-field — field-dependent mobility
+
+$$ \\mu(E) = \\mu_0 / (1 + E/E_c) $$
+
+- Symbols and units: mu [cm2/Vs], E [kV/cm]
+- Assumptions: steady state, uniform field
+- Valid for: 300 K, E < 50 kV/cm
+- Source: [R1] eq. (3), p. 2193
+- Implementation: `src/mobility.py::mu`
+- Verification: `tests/gates/test_fit.py::test_low_field_limit`
+- Status: validated
+
+## References
+
+- [R1] A. Author and B. Author, "An example mobility model," J. Example 1, 2190 (2000).
+  DOI: 10.5555/example.0001 — checked: user 2026-09-26
+"""
+
+
+class TheoryTests(unittest.TestCase):
+    def setUp(self):
+        self.p = Project()
+        self.p.harness()
+        self.p.write("src/mobility.py", "def mu(E, mu0, Ec):\n    return mu0 / (1 + E / Ec)\n")
+        self.p.write("tests/gates/test_fit.py", "def test_low_field_limit():\n    pass\n")
+
+    def tearDown(self):
+        self.p.close()
+
+    def theory(self, text):
+        self.p.write("docs/theory.md", text)
+        return self.p.audit()["theory"]
+
+    def test_absent_theory_is_not_a_problem(self):
+        self.assertFalse(self.p.audit()["theory"]["exists"])
+
+    def test_complete_theory_has_no_problems(self):
+        t = self.theory(GOOD_THEORY)
+        self.assertEqual((t["equations"], t["references"]), (1, 1))
+        self.assertEqual(t["problems"], [])
+        self.assertEqual(t["tbd"], [])
+
+    def test_identifier_without_checked_is_flagged(self):
+        t = self.theory(GOOD_THEORY.replace(" — checked: user 2026-09-26", ""))
+        self.assertIn("[R1]: identifier without 'checked: pdf | user | online'", t["problems"])
+
+    def test_malformed_doi_and_missing_identifier(self):
+        text = GOOD_THEORY.replace("10.5555/example.0001", "10.11/x") + (
+            "- [R2] Someone, \"A paper,\" J. Somewhere 1, 1 (2020).\n")
+        t = self.theory(text)
+        joined = "\n".join(t["problems"])
+        self.assertIn("[R1]: malformed DOI `10.11/x`", joined)
+        self.assertIn("[R2]: no DOI, arXiv, ISBN, or Internal identifier", joined)
+        self.assertEqual(t["unused_references"], ["R2"])
+
+    def test_tbd_is_open_not_a_problem(self):
+        text = GOOD_THEORY.replace("- Source: [R1] eq. (3), p. 2193",
+                                   "- Source: adapted from a textbook,\n  [TBD: source]")
+        t = self.theory(text)
+        self.assertIn("EQ-mu-field: source", t["tbd"])
+        self.assertEqual(t["problems"], [])
+
+    def test_uncited_source_and_undefined_reference(self):
+        text = GOOD_THEORY.replace("[R1] eq. (3), p. 2193", "Smith's classic paper")
+        t = self.theory(text.replace("- Verification:", "- Note: [R9]\n- Verification:"))
+        joined = "\n".join(t["problems"])
+        self.assertIn("EQ-mu-field: source cites no [Rn] reference", joined)
+
+    def test_cited_but_not_listed(self):
+        t = self.theory(GOOD_THEORY.replace("[R1] eq. (3)", "[R1][R3] eq. (3)"))
+        self.assertIn("[R3] is cited but not listed under References", t["problems"])
+
+    def test_code_links_must_exist(self):
+        text = (GOOD_THEORY.replace("src/mobility.py::mu", "src/mobility.py::mobility")
+                .replace("test_fit.py::", "test_missing.py::"))
+        joined = "\n".join(self.theory(text)["problems"])
+        self.assertIn("`src/mobility.py::mobility` not defined", joined)
+        self.assertIn("Verification file `tests/gates/test_missing.py` not found", joined)
+
+    def test_duplicate_doi_and_missing_fields(self):
+        text = GOOD_THEORY.replace("- Status: validated\n", "") + (
+            "- [R2] Copy. DOI: 10.5555/example.0001 — checked: pdf\n")
+        joined = "\n".join(self.theory(text)["problems"])
+        self.assertIn("EQ-mu-field: no '- Status:' line", joined)
+        self.assertIn("appears in [R1], [R2]", joined)
+
+    def test_unfilled_template_is_flagged(self):
+        template = (ROOT / "skills" / "session-start" / "templates" / "theory.md").read_text(
+            encoding="utf-8")
+        t = self.theory(template)
+        self.assertTrue(any("placeholder" in p for p in t["problems"]))
+        self.assertEqual(t["missing_sections"], [])
+
+    def test_report_section(self):
+        self.theory(GOOD_THEORY.replace(" — checked: user 2026-09-26", ""))
+        text = inv.report(self.p.audit(), args())
+        self.assertIn("## 8. Theory document", text)
+        self.assertIn("identifier without", text)
+
+
 class TokenTests(unittest.TestCase):
     def test_estimate_tokens_mixed_text(self):
         self.assertEqual(inv.estimate_tokens("abcd" * 10), 10)

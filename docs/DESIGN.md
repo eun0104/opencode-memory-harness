@@ -130,6 +130,7 @@ name one fixed command that works without any skill loaded.
 | Git history | L3 | session-checkpoint, session-end | Searched through `harness.py harvest`, never read wholesale |
 | `.omo/` notepads (if present) | L3 source | oh-my-openagent executor | Per-plan learnings; harvested, not duplicated |
 | `docs/adr/` | L2 | all skills | Decisions and rejected alternatives |
+| `docs/theory.md` | L2 | session-start (creates), session-checkpoint (rewrites), curation (audits) | Physics applied now, with checked sources. Only for theory-driven projects |
 | `docs/rules/`, `docs/domain/`, `docs/reference/` | L2 | context-curation | Facts that outlive one plan |
 | `docs/.curation-state.json` | — | context-curation | `last_curated_commit`, rejected candidates |
 
@@ -152,6 +153,28 @@ spends the L0 budget, and drifts as the code changes.
    `main` and wait for approval.
 5. Close all open todos and recommend starting implementation in a fresh session. Gate tests for
    the first leaf are written at the start of that session, with the plan in front of it.
+
+## Theory document
+
+Projects that search, combine, and revise physical theories while implementing them keep the
+applied physics in **one living file, `docs/theory.md`** (template in `session-start`).
+
+- **Rewritten in place, not appended.** When the model changes, the checkpoint that changes the
+  code rewrites the affected sections, Model overview included, so the file always reads as one
+  current account. An equation that leaves the file is recorded with its old form and reason in
+  an ADR first. History lives in Git and ADRs, not in the file.
+- **Stable IDs.** `EQ-<id>` per equation, used by code comments, gate test names, and ADRs.
+- **Every equation links forward and back:** source (`[Rn]` + location), implementation
+  (`path.py::function`), verification (`path.py::test`), status.
+- **Citation integrity.** An identifier (DOI, arXiv, ISBN, internal report) is written only if
+  read from the source or given by the user, with `checked: pdf | user | online`. Never from
+  memory: a recalled identifier is what a fabricated citation looks like. Otherwise
+  `[TBD: source]`. When the file is created, AGENTS.md gains a one-line invariant for this.
+- **Checked mechanically** by `docs_inventory.py`: missing fields, malformed or unchecked
+  identifiers, cited-but-unlisted references, implementation or test links that do not exist,
+  and open `[TBD]` links.
+
+The file is created only when the plan applies physical theories, mechanisms, or equations.
 
 ## Division of labour with oh-my-openagent
 

@@ -35,13 +35,21 @@ the plan exist only in the conversation. Read little; write in this order.
    file does not already explain: approach chosen, each rejected alternative with its reason,
    constraints the user stated. Status `accepted`, source `planning session`. Record only what
    was said.
-5. **Git.** If the project is not a Git work tree, say so and ask before `git init`. If the
+5. **Theory** (only if the plan applies physical theories, mechanisms, or equations). Create
+   `docs/theory.md` from `templates/theory.md` with only the equations, assumptions, and
+   references the planning conversation actually established; everything else stays
+   `[TBD: source]`. Follow the citation rule in the template's header. Then add to AGENTS.md,
+   outside the harness markers, under `## Invariants`:
+   `- Never write a DOI or citation that was not read from the source or given by the user; write [TBD: source]. → docs/theory.md`
+   and inside the routing table:
+   `| docs/theory.md | Before implementing, changing, or fitting a physical model, or citing a source |`
+6. **Git.** If the project is not a Git work tree, say so and ask before `git init`. If the
    primary branch is not named `main`, tell the user; the harness assumes `main`. Run
    `git check-ignore -q <plan-path>`; if the plan is ignored, say it is not versioned and ask
    how to handle it. Make sure `.gitignore` lists `__pycache__/` and `.pytest_cache/`. Propose
    one setup commit on `main` with the exact paths (AGENTS.md, `tools/harness.py`, `docs/adr/`,
-   `.gitignore`) and message; commit only after approval.
-6. **Stop cleanly.** Mark every open todo completed or cancelled. Tell the user setup is done
+   `docs/theory.md` if created, `.gitignore`) and message; commit only after approval.
+7. **Stop cleanly.** Mark every open todo completed or cancelled. Tell the user setup is done
    and that implementation should start in a new session with `session-start`.
 
 ## Resume
@@ -61,6 +69,8 @@ AGENTS.md is already in context. Read as little else as possible.
       `templates/gate_test.py`: one test per acceptance criterion of that plan item, each
       assertion measurable. For a criterion that cannot be a test, name it in the first
       checkpoint's `Next:` line; it is closed later with an `Evidence:` trailer.
+      When the leaf implements an equation from `docs/theory.md`, name its gates after the
+      EQ ID and point that equation's Verification line at them.
    d. Run `pytest tests/gates/test_<leaf>.py -q -rxX`. Every gate must report XFAIL; fix any
       ERROR or FAILED before going on.
    e. Checkpoint with `session-checkpoint`: `checkpoint: gates for <leaf>`.

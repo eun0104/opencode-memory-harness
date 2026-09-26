@@ -43,6 +43,19 @@ Gates use `@pytest.mark.xfail(strict=True, raises=(AssertionError, NotImplemente
 unmet criterion stays XFAIL, an import error or typo fails loudly instead of passing as "not yet
 met", and a gate that starts passing while still marked fails until the marker is removed.
 
+## Physical theory and sources
+
+For projects that search, combine, and revise physical theories while implementing them,
+`session-start` creates **`docs/theory.md`**: one living document of the physics applied now.
+When the model changes, the checkpoint that changes the code rewrites the affected sections in
+place, so the file never turns into a pile of appended notes; replaced forms are kept in ADRs.
+
+Each equation has a stable `EQ-<id>`, a source with its location, the implementing function,
+and the verifying test. To prevent fabricated citations, a DOI (or arXiv ID, ISBN, internal
+report number) is recorded only if it was read from the source or given by you, together with
+how it was checked (`checked: pdf | user | online`); otherwise `[TBD: source]`. The curation
+inventory checks all of this, including that the named functions and tests exist.
+
 ## Pieces
 
 | Piece | When | Does |
@@ -103,7 +116,7 @@ the Python standard library and makes no network requests.
 
 ```text
 skills/
-├── session-start/        SKILL.md, scripts/harness.py, templates (AGENTS.md section, gate test, ADR 0001)
+├── session-start/        SKILL.md, scripts/harness.py, templates (AGENTS.md section, gate test, ADR 0001, theory)
 ├── session-checkpoint/   SKILL.md
 ├── session-end/          SKILL.md
 └── context-curation/     SKILL.md, scripts/docs_inventory.py, references/, templates/, command/

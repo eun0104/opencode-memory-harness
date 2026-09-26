@@ -14,6 +14,7 @@ earlier findings change the shape of later ones.
 6. ADR problems
 7. Harvest sources
 8. Gate files open too long
+9. Theory document
 
 ## 0. Setup mode
 
@@ -115,3 +116,22 @@ An xfail that stays open is either blocked, obsolete, or forgotten. Ask which:
 - Forgotten → it belongs in the plan as unfinished work.
 
 Never delete an open gate silently: it is a claim the project has not met yet.
+
+## 9. Theory document
+
+**Report:** `[R2]: identifier without 'checked: pdf | user | online'`
+
+`docs/theory.md` is only trustworthy if every link in it holds. Fix problems in this order:
+
+- **Unchecked or malformed identifier** → ask the user for the source, or read it from the PDF
+  they provide. Never "fix" a DOI from memory; if it cannot be checked, replace it with
+  `[TBD: source]`. A plausible-looking identifier nobody checked is the failure this file exists
+  to prevent.
+- **Implementation or Verification link not found** → the code moved or was renamed; update the
+  link, or mark `[TBD: verification]` if the test is gone.
+- **Cited but not listed / listed but never cited** → add the entry or remove the stray one.
+- **Missing fields** → add them; write `[TBD: ...]` rather than guessing.
+
+Then read the file whole. It must read as one account of the current model: an overview that
+describes an older model, or paragraphs that read like appended update notes, mean it needs a
+rewrite in place, with an ADR for any form that left the file.

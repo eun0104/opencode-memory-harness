@@ -70,7 +70,7 @@ If harvesting has used more than about half the window, end at Pass A regardless
 ## Step 1 — Inventory
 
 Interpret the report with `references/audit-checks.md`. Note budget, broken pointers, orphans,
-duplicates, staleness, ADR problems, and gate files open too long.
+duplicates, staleness, ADR problems, gate files open too long, and theory-document problems.
 
 ## Step 2 — Harvest
 
@@ -93,7 +93,8 @@ already stated elsewhere (add a pointer), anything unverified.
 
 A `Tried:` line that recurs across branches is a rejected alternative: it needs an ADR.
 
-Route with `references/routing-table.md`. Invariants are the only content copied into AGENTS.md:
+Route with `references/routing-table.md`. A fact about the physics applied goes into
+`docs/theory.md` by rewriting the affected section in place, never as an appended note. Invariants are the only content copied into AGENTS.md:
 one line each, about seven at most. When a scientific profile applies, require its source →
 canonical form → implementation → verification chain; a missing link stays `[TBD]`.
 

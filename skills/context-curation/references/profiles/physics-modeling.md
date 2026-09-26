@@ -37,34 +37,25 @@ will extend it into regimes where it is meaningless, and the output will look co
 
 ## Recommended L2 documents
 
-### `docs/domain/theory-ledger.md` — the highest-value doc for this project class
+### `docs/theory.md` — the highest-value doc for this project class
 
-One entry per mechanism in the model:
+The single living theory document from `scientific-modeling.md`, rewritten in place as the model
+changes. For device modeling, these sections carry the most weight:
 
-```markdown
-### EQ-<stable-id> — <Mechanism name>
-**Evidence state:** hypothesis | adopted | validated | rejected | superseded
-**Governing form:** <equation, in the notation actually used in the code>
-**Symbols and units:** <definitions, units, sign and boundary conventions>
-**Source:** <paper / textbook section / derived here in session NNN>
-**Assumes:** <every assumption inherited, listed — this is the part the code cannot tell you>
-**Valid for:** <carrier regime, field range, temperature range, dimensionality>
-**Approximation:** <numerical or analytical approximation, or none>
-**Implemented in:** `<file>:<function>`
-**Combined with:** <which other mechanisms, and whether their assumptions are compatible>
-**Known tension:** <where an assumption conflicts with another mechanism in the model>
-**Verified by:** <limiting case, benchmark, conservation check, test, or dataset>
-**Last verified:** YYYY-MM-DD
-```
+- **Assumptions** per equation: every one inherited (steady state, carrier statistics regime,
+  scattering hierarchy). This is the part the code cannot tell you.
+- **Coupling and known tensions**: where mechanisms from different frameworks conflict. In
+  creative theory fusion the conflicts are the research content, and they are the first thing
+  lost between sessions.
+- **Validity domain**: the intersection of the component ranges, with the binding constraint
+  named. It is what an agent needs before it agrees to extrapolate anything.
+- **Identifiability**: which parameters trade off, what data would separate them, and what is
+  fixed meanwhile. For example: N_t and E_t degenerate in room-temperature I-V alone; breaks
+  with temperature-dependent data; until then E_t is fixed at a sourced value and N_t reported
+  as conditional on it.
 
-The `Known tension` field is what makes this worth maintaining. In creative theory fusion the
-conflicts are the research content, and they are the first thing lost between sessions.
-
-### `docs/domain/validity-domain.md`
-
-The composite model's actual validity, derived from the intersection of the ledger entries, with
-the binding constraint named. Small file, disproportionate value: it is what an agent needs
-before it agrees to extrapolate anything.
+Sources follow the citation-integrity rules: identifiers only from the paper or the user, with
+how they were checked.
 
 ### `docs/reference/parameters.md`
 
@@ -76,19 +67,6 @@ Extend the standard reference template with columns this work requires:
 A fitted value without its dataset and its free/fixed status is not a result — it is a number.
 Values silently migrating from one device's fit into another's initial guess is a routine and
 hard-to-detect failure.
-
-### `docs/domain/identifiability.md`
-
-Findings about parameter degeneracy: which parameters trade off against which, what data would
-break the degeneracy, which fits are underdetermined. These cost real work to discover and are
-otherwise rediscovered from scratch every few sessions.
-
-```markdown
-### N_t and E_t are degenerate in room-temperature I-V alone
-**Evidence:** session NNN — 2-decade range in N_t with compensating E_t, same residual
-**Breaks with:** temperature-dependent data, or an independent measurement of one
-**Until then:** fix E_t at <value, source> and report N_t as conditional on it
-```
 
 ### `docs/domain/gotchas.md`
 
