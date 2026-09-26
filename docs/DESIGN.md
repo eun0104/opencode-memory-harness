@@ -1,7 +1,12 @@
 # opencode-memory-harness — Design
 
-Status: draft v3, branch `v3-harness`. This document is the design contract for the rewrite.
+Status: v3.1 draft, branch `v3-harness`. This document is the design contract for the rewrite.
 It replaces the dependency on the external `session-context-init` and `session-handoff` skills.
+
+v3.0 kept session state in prose files (WORKING.md, SESSION-LOG.md). v3.1 moves that state into
+Git history, strict xfail tests, and ADRs, following the user's proposal. Prose written by the
+agent about its own progress can claim "done"; a test either passes or does not, and a commit is
+tied to the code it changed.
 
 ## Problem
 
@@ -11,133 +16,159 @@ It replaces the dependency on the external `session-context-init` and `session-h
   re-prompts the agent while items remain). A long todo list therefore runs inside one session
   until compaction lands in the middle of an item.
 - Implementation starts after a discussion with the planning agent. That agent has already
-  written the plan file under `.omo/` (or a similar folder), and the first session's window is
-  already heavily used when `session-start` runs.
+  written the plan file under `.omo/`, and the first session's window is already heavily used
+  when `session-start` runs.
 - The previous harness depended on two company-internal skills that are not available here.
 
 ## Environment facts (stated by the user)
 
 - AGENTS.md instructions are still followed after compaction.
-- Internal LLM (GLM 5.2 based), corporate network, no external dependencies.
+- Internal LLM (GLM 5.2 based), corporate network, no external dependencies beyond what the
+  company provides. pytest is available.
 - Windows (`C:\projects`); the shell may be PowerShell.
+- A pre-compaction hook was tried in the internal build and did not work.
 
 ## Principles
 
 1. **AGENTS.md is the anchor.** It is the one layer that survives compaction, so it carries the
-   recovery rule: "if you cannot recall the current goal and gates, read WORKING.md first".
-2. **Write ahead.** Persist state at event boundaries (gate done, decision made, before a new
-   todo item, before a large read). Never wait for "near the limit"; the agent cannot see it
-   reliably.
-3. **Use the continuation mechanism instead of fighting it.** A checkpoint is a todo item, so
+   recovery rule: "if you cannot recall the goal, gates, and next action, run
+   `python tools/harness.py status`".
+2. **State lives where it cannot drift.** Goal = branch. Gates = strict xfail tests. Next action
+   and failed attempts = trailers on checkpoint commits. Decisions = ADRs. No handoff prose.
+3. **Write ahead.** Commit at event boundaries (gate done, decision made, approach failed, before
+   the next todo item). Never wait for "near the limit"; the agent cannot see it reliably.
+4. **Use the continuation mechanism instead of fighting it.** A checkpoint is a todo item, so
    the mechanism that keeps the agent going also guarantees the checkpoint happens.
-4. **Short todo lists.** At most 5 work items, then a checkpoint item. Further items come from
-   the plan file after the checkpoint. The tree lives in a file; the session holds a few leaves
-   (the unlazy Depth Tree idea).
-5. **One fact, one home.** The planner's plan file is the canonical plan. No root `plan.md`
-   copy. WORKING.md points to plan items instead of copying them.
-6. **Clean stops.** Before any required stop (approval boundary, end of session), mark every open
+5. **Short todo lists.** At most 5 work items, then a checkpoint item. The tree lives in the plan
+   and the gate tests; the session holds a few leaves (the unlazy Depth Tree idea).
+6. **One fact, one home.** The planner's plan file is the canonical plan; its path is recorded
+   once in AGENTS.md. Nothing copies plan text.
+7. **Done means a passing test (unlazy).** A gate is closed only when its test passes and the
+   xfail marker is removed in the same commit. Weakening a test or its tolerance to make it pass
+   is a decision and needs an ADR, not a silent edit. Criteria that cannot be tested are closed
+   with an `Evidence:` trailer carrying the observed value.
+8. **Clean stops.** Before any required stop (approval boundary, end of session), mark every open
    todo completed or cancelled so the continuation mechanism does not push past the stop.
-7. **Evidence gates (unlazy).** A gate is checked only with a runnable `CHECK:` whose result was
-   observed, or an `EVIDENCE:` line with a concrete value, output, or path. Never "pending".
-8. **Small skills.** Each session skill body stays under about 1,500 estimated tokens, because
-   the skill is loaded into the same window it is trying to protect.
-9. **Portable tooling.** Python standard library only. Skill instructions do not rely on `grep`,
-   `sed`, or other POSIX-only commands.
-10. **No runtime hooks.** The harness works through AGENTS.md and skill files only. It does not
-    rely on a pre-compaction hook or on the internal compaction settings: the user tried a
-    pre-compaction hook in the internal build and it did not work, and the configuration there
-    is complex. Write-ahead (principle 2) makes the moment of compaction irrelevant.
+9. **Small skills.** Each session skill body stays under about 1,500 estimated tokens, because
+   the skill is loaded into the same window it is trying to protect. Enforced by tests.
+10. **Portable tooling.** Python standard library for harness tooling; pytest for the project's
+    tests. Skill instructions do not rely on `grep`, `sed`, or other POSIX-only commands.
+11. **No runtime hooks.** The harness works through AGENTS.md, skill files, Git, and one script.
+    It does not rely on a pre-compaction hook or on internal compaction settings.
 
-## Skills
+## Git model
 
-| Skill | When | Does |
+- `main` plus one branch `feature/<leaf>` per plan leaf. No develop/release/hotfix branches.
+- On `feature/*` the agent commits without asking: checkpoints are the mechanism that survives
+  compaction, and asking each time would make them rare.
+- Merging into `main` needs the user's approval. Merge with `--no-ff`, never squash: squashing
+  would erase the checkpoint trailers that curation harvests.
+- Never push, rebase, reset, stash, or amend. Stage literal paths only; never `git add -A` or
+  `git add .` (data files and secrets must not slip in).
+- Commits on `main` other than an approved merge (e.g. the initial setup) need approval.
+
+### Checkpoint commit
+
+```text
+checkpoint: <what changed, one line>
+
+Next: <exact next action, specific enough to start cold>
+Tried: <approach> — <why it failed>
+Evidence: <criterion> — <observed value or output>
+Learned: [gotcha] <tool, data, or external system behaved unexpectedly>
+Learned: [candidate] <fact that may deserve a permanent home>
+ADR: docs/adr/NNNN-<slug>.md
+```
+
+`Next:` is required on every checkpoint. The other trailers appear only when they apply and may
+repeat. The trailers are the harvest source for curation; tagged `Learned:` lines replace the
+tagged session log.
+
+## Gate tests
+
+- Each leaf's acceptance criteria are written as tests **before** implementation, in
+  `tests/gates/test_<leaf>.py` (`-` in the leaf slug becomes `_`).
+- Each unmet gate is marked
+  `@pytest.mark.xfail(strict=True, raises=(AssertionError, NotImplementedError), reason="gate: <criterion>")`.
+  - `strict=True`: an unexpected pass fails the run, so a met gate cannot stay marked open.
+  - `raises=...`: an ImportError or typo does not masquerade as "not yet met".
+  - Blocked gates use `reason="blocked: <what is missing>"`.
+- A leaf is done when its gate file has no xfail markers left and the tests pass.
+- Slow tests (simulations, fits) carry `@pytest.mark.slow`. Status never runs tests: the harness
+  finds open gates by reading the test files statically.
+
+## ADRs
+
+`docs/adr/NNNN-<slug>.md`, one decision per file, statuses `proposed` / `accepted` /
+`superseded by NNNN`. Each records context, the decision, alternatives considered with the
+reason each was rejected, consequences, and the source (planning session, commit, data). This
+replaces `docs/decisions.md` and the "do not repeat" list for anything that outlives a branch.
+
+## Skills and tool
+
+| Piece | When | Does |
 |---|---|---|
-| `session-start` | First session after planning; every later session start; after compaction | First run: capture planning rationale, create WORKING.md and the AGENTS.md anchor, then recommend a fresh session. Later: read WORKING.md, then only what it points to |
-| `session-checkpoint` | During a session, at event boundaries and as todo items | Rewrite WORKING.md: goal, gates with evidence, next action, decisions, do-not-repeat, in flight |
-| `session-end` | End of session | Close WORKING.md for the next session, append SESSION-LOG.md with tags, offer a Git checkpoint |
-| `context-curation` | About every 5 sessions | Existing skill, slimmed: promote recurring facts to L2, audit budgets and reachability |
+| `session-start` | Once after planning; each session start | First run: AGENTS.md anchor, copy the tool, ADRs for the planning rationale, stop. Resume: run status; on `main`, open the next leaf's branch and write its gate tests first |
+| `session-checkpoint` | During work, at event boundaries and as todo items | Checkpoint commit on the feature branch with trailers; remove the xfail marker of a gate that now passes |
+| `session-end` | End of session | Final checkpoint, ADRs for decisions made, propose the merge when the leaf is done, suggest curation when due |
+| `context-curation` | About every 5 merged leaves | Harvest trailers, ADRs, notepads; promote to L2; audit budgets, reachability, stale xfails |
+| `tools/harness.py` | Any time; after compaction | `status`: branch, last `Next:`, `Tried:` on this branch, open gates, uncommitted paths. `harvest`: trailers since a commit |
 
-The old pre-init curation pass is removed from the first session. The first session is already
-heavy after planning; a full curation run there would push it into compaction. `session-start`
-does the minimum instead, and curation runs later when there is session evidence.
+The tool is copied into each project as `tools/harness.py` by session-start, so AGENTS.md can
+name one fixed command that works without any skill loaded.
 
 ## Files
 
 | File | Layer | Owner | Notes |
 |---|---|---|---|
-| `AGENTS.md` | L0 | session-start (creates), curation (tunes) | Anchor rules + routing. 2,000-token cap |
+| `AGENTS.md` | L0 | session-start (creates), curation (tunes) | Anchor rules, plan path, routing. 2,000-token cap |
 | `.omo/` plan file | L1 | planner | Canonical plan. Path recorded in AGENTS.md; pointed to, never copied |
-| `.omo/` notepads (if present) | L3 source | oh-my-openagent executor | Per-plan learnings / decisions / issues. Harness does not duplicate them |
-| `docs/handoff/WORKING.md` | L1 | session-checkpoint, session-end | Live state. Replaces the old HANDOFF.md: one file, always current |
-| `docs/handoff/SESSION-LOG.md` | L3 | session-end | Append-only, tagged, searched not read |
-| `docs/decisions.md` | L2 | session-start (planning rationale), context-curation | Choices and rejected alternatives that outlive one plan |
-| `docs/rules/`, `docs/domain/`, `docs/reference/` | L2 | context-curation | Facts that outlive one plan, promoted from notepads and the session log |
+| `tests/gates/` | L1 (via status) | session-start, session-checkpoint | Executable acceptance criteria |
+| Git history | L3 | session-checkpoint, session-end | Searched through `harness.py harvest`, never read wholesale |
+| `.omo/` notepads (if present) | L3 source | oh-my-openagent executor | Per-plan learnings; harvested, not duplicated |
+| `docs/adr/` | L2 | all skills | Decisions and rejected alternatives |
+| `docs/rules/`, `docs/domain/`, `docs/reference/` | L2 | context-curation | Facts that outlive one plan |
+| `docs/.curation-state.json` | — | context-curation | `last_curated_commit`, rejected candidates |
 
-HANDOFF.md is merged into WORKING.md. If WORKING.md is kept current during the session, a
-separate end-of-session snapshot would state the same facts twice.
-
-### Division of labour with oh-my-openagent
-
-oh-my-openagent already keeps per-plan notepads. The harness does not write a parallel
-decisions or gotchas file during execution; that would state the same fact in two places.
-
-- **Notepads** hold what the executor learns inside one plan (raw material).
-- **WORKING.md** holds the state needed to resume after compaction: current leaf, gates with
-  evidence, next action, in-flight files. The notepads do not carry gate evidence or the exact
-  next action.
-- **L2 docs** hold facts that must outlive the plan. context-curation harvests the notepads and
-  the session log, and promotes what passes the promotion test. A finished plan's notepads are
-  otherwise easy to lose track of.
-
-Plan lookup: the path is known exactly once, when the plan has just been written and is still
-in context. session-start records it as one line in AGENTS.md, which survives compaction, so
-every later session and every recovery reads it from there. The harness never hard-codes the
-`.omo/` layout.
-
-- New or switched plan: update that one AGENTS.md line right after planning, while the path is
-  still in context.
-- Path not in context (e.g. session-start runs in a fresh session): list the `.md` files under
-  `.omo/` and ask the user which one is the plan. Do not guess.
-- Whether `.omo/` is git-ignored and whether notepads exist are checked on the spot
-  (`git check-ignore`, a directory listing), not assumed.
+Plan lookup: the path is known exactly once, when the plan has just been written and is still in
+context. session-start records it in AGENTS.md. If the path is not in context, list the `.md`
+files under `.omo/` and ask the user. The `.omo/` layout is never hard-coded.
 
 ## First session after planning
 
-The window is already heavy and the planning rationale exists only in the conversation.
+The window is already heavy and the planning rationale exists only in the conversation. Do not
+run opencode's `/init`: it fills AGENTS.md with facts that are cheap to rediscover from the code,
+spends the L0 budget, and drifts as the code changes.
 
-Do not run opencode's `/init`. It fills AGENTS.md with facts that are cheap to rediscover from
-the code (commands, folder layout), which fails the promotion test, spends the L0 budget, and
-drifts as the code changes. Such facts reach AGENTS.md later only through context-curation,
-once sessions show the agent repeatedly needs them.
+1. AGENTS.md anchor with the plan path (a few hundred tokens; the recovery anchor as soon as it
+   exists). If AGENTS.md exists, add the harness section between markers.
+2. Copy the tool to `tools/harness.py`.
+3. ADRs for the planning rationale that is not in the plan: chosen approach, rejected
+   alternatives and why, constraints the user stated.
+4. Git: ask before `git init`; check whether the plan is git-ignored; propose one setup commit on
+   `main` and wait for approval.
+5. Close all open todos and recommend starting implementation in a fresh session. Gate tests for
+   the first leaf are written at the start of that session, with the plan in front of it.
 
-Order of writes:
+## Division of labour with oh-my-openagent
 
-1. Write the AGENTS.md anchor first: the memory rules and the plan path (taken from context; the
-   plan was just written, so do not re-read it). It is a few hundred tokens and becomes the
-   recovery anchor as soon as it exists. If AGENTS.md already exists (an existing project or
-   another tool created it), add the harness section between markers instead of overwriting.
-   Whether opencode picks up an AGENTS.md created mid-session, or only at the next session
-   start, is unverified; either way, writing it first is never worse.
-2. Write the planning rationale (chosen approach, rejected alternatives and why) that is not
-   already in the plan file. The plan usually records *what*, not *why*. Destination:
-   `docs/decisions.md`. Planning rationale outlives the plan, and per-plan notepads are easy to
-   lose once the plan is finished.
-3. Write WORKING.md with the first leaf goal and its gates, pointing to the plan item.
-4. Close all open todos and recommend starting implementation in a fresh session. If AGENTS.md
-   turns out to load only at session start, this step is required, not recommended.
+- **Plan file**: what to do. Owned by the planner.
+- **Notepads**: what the executor learns inside one plan. Raw material for curation.
+- **Gate tests and branch**: where the current leaf stands. Owned by the harness.
+- **Checkpoint trailers**: next action and failed attempts between commits.
+- **ADRs and L2 docs**: what must outlive the plan.
 
 ## Migration status
 
-- Done: `session-checkpoint`, `session-start`, `session-end`, with budget tests.
-- Not yet adapted: `context-curation` and `docs_inventory.py` still expect the v2 layout. On a
-  v3 project the inventory reports `ambiguous` (root `plan.md` missing), flags `HANDOFF.md` as
-  missing, classifies WORKING.md as L2 instead of L1, and does not see the `.omo/` plan.
+- Rewriting to v3.1: `session-*` skills, `tools/harness.py`, and `context-curation`.
+- Removed from v3.0: `docs/handoff/WORKING.md`, `docs/handoff/SESSION-LOG.md`,
+  `docs/decisions.md`.
+- Removed from v2: root `plan.md`, `HANDOFF.md`, `handoff-spec.md`, session contract blocks.
 
 ## Open questions
 
-- Names of the continuation and compaction hooks in the internal oh-my-openagent build. Not
-  needed: see principle 10.
-- Whether the executing agent ticks checkboxes in the plan file. Observable in use; if it does,
-  WORKING.md can rely on the plan for progress and keep only the current leaf.
+- Whether the executing agent ticks checkboxes in the plan file. Observable in use.
 - Whether opencode re-reads AGENTS.md during a session. Test: mid-session, append a visible
   rule (e.g. "end every reply with 'OK'") and see whether the next reply follows it.
+- Criteria that resist testing (judging a plot, reading a paper). The `Evidence:` trailer is the
+  fallback; watch whether it gets abused as a shortcut around tests.
